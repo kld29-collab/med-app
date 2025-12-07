@@ -2,6 +2,13 @@
 Agent 2: Retrieval/Database Agent (Deterministic Layer)
 Executes queries against medication databases and returns structured interaction data.
 NO LLM involvement - pure deterministic data retrieval.
+
+Data Sources:
+1. RxNorm API - Drug name normalization and RxCUI identifier resolution ONLY
+   (RxNorm's interaction endpoints have been deprecated and are no longer available)
+2. FDA Drug Labeling API (OpenFDA) - Contraindications, warnings, precautions, and documented interactions
+3. Web Search (SerpAPI) - Current interaction information and clinical evidence
+4. DrugBank API (optional, requires paid subscription) - Professional drug interaction database
 """
 from typing import List, Dict, Optional
 from utils.drug_apis import DrugAPIClient, normalize_medications
@@ -49,14 +56,15 @@ class RetrievalAgent:
             }
         }
         
-        # Step 1: Normalize medication names using RxNorm
+        # Step 1: Normalize medication names using RxNorm REST API
+        # RxNorm is used ONLY for drug name normalization and RxCUI identifier resolution
         if medications:
             import sys
             print(f"[DEBUG] Input medications: {medications}", file=sys.stderr)
             normalized = normalize_medications(medications, self.api_client)
             print(f"[DEBUG] Normalized medications: {normalized}", file=sys.stderr)
             results["normalized_medications"] = normalized
-            results["metadata"]["sources_queried"].append("RxNorm")
+            results["metadata"]["sources_queried"].append("RxNorm (Normalization)")
             
             # Extract normalized names and RxCUIs for further queries
             # Filter out empty strings and ensure we have valid medication names
@@ -66,29 +74,18 @@ class RetrievalAgent:
                 if (med.get("normalized_name") or med.get("original_name"))
             ]
             
-            # Extract RxCUIs for interaction checking
+            # Extract RxCUIs for use in FDA and other API queries
             rxcui_list = [
                 str(med.get("rxcui"))
                 for med in normalized
                 if med.get("rxcui")
             ]
             
-            # Step 2: Try to get drug-drug interactions from RxNorm
-            # Note: RxNorm interaction API has limited coverage, so we treat it as optional
-            if len(rxcui_list) > 1:
-                import sys
-                print(f"[DEBUG] Querying RxNorm interactions for RxCUIs: {rxcui_list}", file=sys.stderr)
-                try:
-                    interactions = self.api_client.get_drug_interactions_rxnorm(rxcui_list)
-                    print(f"[DEBUG] RxNorm returned {len(interactions)} interactions", file=sys.stderr)
-                    if interactions:
-                        results["drug_interactions"].extend(interactions)
-                        results["metadata"]["sources_queried"].append("RxNorm Interactions")
-                except Exception as e:
-                    print(f"[DEBUG] RxNorm interaction query failed: {str(e)}", file=sys.stderr)
-            
-            # Step 3: Get FDA information for each medication (includes warnings and precautions)
-            print(f"[DEBUG] Querying FDA for each medication", file=sys.stderr)
+            # Step 2: Get FDA drug information (includes warnings, contraindications, and documented interactions)
+            # Note: RxNorm interaction API endpoints (/interaction/interaction.json, etc.) have been
+            # deprecated by the NLM and are no longer functional. FDA labels provide authoritative
+            # contraindication and warning information.
+            print(f"[DEBUG] Querying FDA for medication information", file=sys.stderr)
             fda_queried = False
             for med_name in medications:
                 fda_info = self.api_client.get_fda_drug_info(med_name)
@@ -102,12 +99,14 @@ class RetrievalAgent:
                     fda_queried = True
             
             if fda_queried:
-                results["metadata"]["sources_queried"].append("FDA")
+                results["metadata"]["sources_queried"].append("FDA Drug Labels")
             
-            # Step 2b: Since RxNorm has limited interaction data, always supplement with web search for drug combinations
+            # Step 3: Web search for drug interaction information
+            # Since RxNorm interaction API is deprecated, web search provides current interaction data
+            # from clinical databases, research, and pharmacovigilance sources
             if len(medications) > 1:
                 import sys
-                print(f"[DEBUG] Searching web for interaction context", file=sys.stderr)
+                print(f"[DEBUG] Searching web for drug interaction information", file=sys.stderr)
                 interaction_search_query = f"{medications[0]} {medications[1]} drug interaction"
                 if len(medications) > 2:
                     interaction_search_query = "drug interactions " + " ".join(medications)

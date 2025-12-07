@@ -1,6 +1,11 @@
 """
 Drug API utilities for interacting with RxNorm, DrugBank, and FDA databases.
 This is the deterministic layer - no LLM involvement.
+
+NOTE: RxNorm API is used ONLY for drug name normalization and RxCUI identifier resolution.
+RxNorm's /interaction/ endpoints (referenced in older NIH documentation) have been deprecated
+and are no longer available. Drug interaction data is retrieved from FDA drug labels (OpenFDA)
+and web search results instead.
 """
 import requests
 import time
@@ -100,147 +105,34 @@ class DrugAPIClient:
     
     def get_drug_interactions_rxnorm(self, rxcui_list: List[str]) -> List[Dict]:
         """
-        Get drug interactions using RxNorm public interaction API (no authentication required).
+        DEPRECATED: RxNorm interaction API endpoints are no longer available.
         
-        Uses the reliable /interaction/interaction.json endpoint for single drugs,
-        and /interaction/list.json for pairwise comparisons.
+        This method is retained for reference only and will always return an empty list.
+        
+        Historical Note:
+        Older NIH documentation referenced /interaction/interaction.json and /interaction/list.json
+        endpoints for retrieving drug interactions. These endpoints have been deprecated and are
+        no longer functional. The NLM has not provided replacement endpoints for this functionality.
+        
+        Current Solution:
+        Drug interaction data is now retrieved from:
+        1. FDA drug labels via OpenFDA API (contraindications, warnings, precautions)
+        2. Web search results via SerpAPI for current interaction information
+        3. Future: DrugBank API (requires paid subscription)
         
         Args:
-            rxcui_list: List of RxCUI identifiers (must be ingredient or semantic clinical drug RXCUIs)
+            rxcui_list: List of RxCUI identifiers (DEPRECATED - no longer used)
         
         Returns:
-            List of interaction dictionaries
+            Empty list (RxNorm interaction API is not available)
         """
         import sys
-        interactions = []
+        # Log that this endpoint is deprecated
+        print(f"[DEBUG] get_drug_interactions_rxnorm called - this method is deprecated", file=sys.stderr)
+        print(f"[DEBUG] RxNorm interaction API endpoints are no longer available", file=sys.stderr)
+        print(f"[DEBUG] Use FDA drug labels and web search for interaction data instead", file=sys.stderr)
         
-        try:
-            # Strategy: Query each drug's interactions individually first
-            # This is more reliable than the pairwise endpoint
-            all_drug_interactions = {}
-            
-            for rxcui in rxcui_list:
-                # Use the reliable /interaction/interaction.json endpoint
-                url = f"{self.rxnorm_base_url}/interaction/interaction.json"
-                params = {"rxcui": rxcui}
-                
-                print(f"[DEBUG] Querying RxNorm interactions for single RXCUI {rxcui}", file=sys.stderr)
-                print(f"[DEBUG] URL: {url}?rxcui={rxcui}", file=sys.stderr)
-                
-                try:
-                    response = requests.get(url, params=params, timeout=10)
-                    
-                    if response.status_code == 404:
-                        print(f"[DEBUG] RXCUI {rxcui} has no interaction data in RxNorm (404)", file=sys.stderr)
-                        continue
-                    
-                    if response.status_code == 400:
-                        print(f"[DEBUG] RXCUI {rxcui} is invalid or non-interactable (400)", file=sys.stderr)
-                        continue
-                    
-                    response.raise_for_status()
-                    data = response.json()
-                    print(f"[DEBUG] RxNorm single-drug response keys: {list(data.keys())}", file=sys.stderr)
-                    
-                    # Store all interactions for this drug
-                    all_drug_interactions[rxcui] = data
-                    
-                    # Parse the interaction response
-                    if data.get("interactionTypeGroup"):
-                        for group in data["interactionTypeGroup"]:
-                            if group.get("interactionType"):
-                                for interaction_type in group["interactionType"]:
-                                    if interaction_type.get("interactionPair"):
-                                        for pair in interaction_type["interactionPair"]:
-                                            interaction_concept = pair.get("interactionConcept", [{}])
-                                            description = pair.get("description", "No description available")
-                                            severity = pair.get("severity", "unknown")
-                                            
-                                            # Extract drug names from the interaction concepts
-                                            drugs = [concept.get("minConceptItem", {}).get("name", "Unknown") 
-                                                    for concept in interaction_concept if concept.get("minConceptItem")]
-                                            
-                                            if len(drugs) >= 2:
-                                                interaction_obj = {
-                                                    "drug1": drugs[0],
-                                                    "drug2": drugs[1],
-                                                    "severity": severity,
-                                                    "description": description,
-                                                    "source": "RxNorm",
-                                                    "confidence": "high"
-                                                }
-                                                print(f"[DEBUG] Found interaction: {interaction_obj}", file=sys.stderr)
-                                                interactions.append(interaction_obj)
-                    else:
-                        print(f"[DEBUG] RXCUI {rxcui} returned response but no interactionTypeGroup", file=sys.stderr)
-                        
-                except requests.exceptions.RequestException as e:
-                    print(f"[DEBUG] RxNorm request error for RXCUI {rxcui}: {str(e)}", file=sys.stderr)
-                    continue
-            
-            # If we have multiple RXCUIs, also try the pairwise endpoint as a supplement
-            if len(rxcui_list) > 1:
-                print(f"[DEBUG] Attempting pairwise interaction lookup", file=sys.stderr)
-                for i in range(len(rxcui_list)):
-                    for j in range(i + 1, len(rxcui_list)):
-                        rxcui1 = rxcui_list[i]
-                        rxcui2 = rxcui_list[j]
-                        
-                        url = f"{self.rxnorm_base_url}/interaction/list.json"
-                        params = {"rxcuis": f"{rxcui1}+{rxcui2}"}
-                        
-                        print(f"[DEBUG] Pairwise lookup: {rxcui1} + {rxcui2}", file=sys.stderr)
-                        
-                        try:
-                            response = requests.get(url, params=params, timeout=10)
-                            
-                            if response.status_code in [404, 400]:
-                                print(f"[DEBUG] No pairwise interaction data for {rxcui1}+{rxcui2}", file=sys.stderr)
-                                continue
-                            
-                            response.raise_for_status()
-                            data = response.json()
-                            
-                            # Parse pairwise response
-                            if data.get("fullInteractionTypeGroup"):
-                                for group in data["fullInteractionTypeGroup"]:
-                                    if group.get("fullInteractionType"):
-                                        for interaction_type in group["fullInteractionType"]:
-                                            if interaction_type.get("interactionPair"):
-                                                for pair in interaction_type["interactionPair"]:
-                                                    interaction_concept = pair.get("interactionConcept", [{}])
-                                                    description = pair.get("description", "No description available")
-                                                    severity = pair.get("severity", "unknown")
-                                                    
-                                                    drugs = [concept.get("minConceptItem", {}).get("name", "Unknown") 
-                                                            for concept in interaction_concept if concept.get("minConceptItem")]
-                                                    
-                                                    if len(drugs) >= 2:
-                                                        interaction_obj = {
-                                                            "drug1": drugs[0],
-                                                            "drug2": drugs[1],
-                                                            "severity": severity,
-                                                            "description": description,
-                                                            "source": "RxNorm",
-                                                            "confidence": "high"
-                                                        }
-                                                        # Check if we already have this interaction
-                                                        if not any(i["drug1"] == interaction_obj["drug1"] and 
-                                                                  i["drug2"] == interaction_obj["drug2"] 
-                                                                  for i in interactions):
-                                                            interactions.append(interaction_obj)
-                                                            print(f"[DEBUG] Found pairwise interaction: {interaction_obj}", file=sys.stderr)
-                                                            
-                        except requests.exceptions.RequestException as e:
-                            print(f"[DEBUG] Pairwise lookup error: {str(e)}", file=sys.stderr)
-                            continue
-            
-            print(f"[DEBUG] Total RxNorm interactions found: {len(interactions)}", file=sys.stderr)
-            return interactions
-            
-        except Exception as e:
-            print(f"[DEBUG] Error in get_drug_interactions_rxnorm: {str(e)}", file=sys.stderr)
-            return []
+        return []  # Return empty list since the API is deprecated
     
     def get_drug_interactions_drugbank(self, drug_names: List[str]) -> List[Dict]:
         """

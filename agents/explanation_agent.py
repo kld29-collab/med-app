@@ -1,6 +1,12 @@
 """
 Agent 3: Explanation Agent
 Translates technical interaction data into plain-language explanations.
+
+Data sources summarized in explanations:
+- RxNorm: Drug name normalization only (interaction API is deprecated)
+- FDA Drug Labels (OpenFDA): Contraindications, warnings, precautions
+- Web Search (SerpAPI): Current interaction information from clinical sources
+- DrugBank (optional): Professional drug interaction database (paid)
 """
 import json
 import os

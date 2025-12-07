@@ -109,11 +109,42 @@ python app.py
 - Local: http://localhost:5000
 - Deploy to Vercel for public access
 
-## API Keys Required
+## Data Sources
 
-1. **OpenAI API Key**: Get from https://platform.openai.com/api-keys
-2. **RxNorm/UMLS API**: Register at https://www.nlm.nih.gov/research/umls/
-3. **DrugBank API**: Apply for access at https://go.drugbank.com/releases/latest (academic license available)
+### RxNorm API
+**Purpose**: Drug name normalization and RxCUI identifier resolution  
+**Status**: ✅ Working  
+**API Used**: `/rxcui.json` (exact match) and `/approximateTerm.json` (fuzzy match)  
+**Note**: RxNorm's `/interaction/` endpoints (referenced in older documentation) have been **deprecated by the NLM** and are no longer available.
+
+### FDA Drug Labels (OpenFDA)
+**Purpose**: Contraindications, warnings, precautions, and documented drug interactions  
+**Status**: ✅ Working  
+**API**: https://api.fda.gov/drug/label.json  
+**Authentication**: None required (public API)  
+**Data Retrieved**: Brand names, generic names, warnings, contraindications, precautions, documented interactions
+
+### Web Search (SerpAPI)
+**Purpose**: Current drug interaction information and clinical evidence  
+**Status**: ✅ Working  
+**Note**: Used as the primary interaction data source due to RxNorm interaction API deprecation  
+**Configuration**: Requires `SERPAPI_KEY` environment variable
+
+### DrugBank API (Optional)
+**Purpose**: Professional-grade drug interaction database with 13,000+ drugs  
+**Status**: Not yet implemented (framework exists)  
+**Requires**: Paid subscription credentials (username/password)  
+**Benefits**: Comprehensive interaction data with detailed pharmacokinetics
+
+## API Migration Notes
+
+**RxNorm Interaction API Deprecation**:
+- The NLM has deprecated the `/interaction/interaction.json` and `/interaction/list.json` endpoints
+- Older NIH documentation references these endpoints, but they are no longer maintained
+- **Current Solution**: Drug interaction data is retrieved from FDA labels + web search
+- These sources provide evidence-based, clinically relevant interaction information
+
+
 
 ## Example User Flow
 
