@@ -130,8 +130,7 @@ class ExplanationAgent:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.3,  # Slightly higher for more natural language, but still controlled
-                response_format={"type": "json_object"}
+                temperature=0.3  # Slightly higher for more natural language, but still controlled
             )
             
             explanation = json.loads(response.choices[0].message.content)

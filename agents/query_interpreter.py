@@ -105,8 +105,7 @@ class QueryInterpreter:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.1,  # Low temperature for consistent extraction
-                response_format={"type": "json_object"}
+                temperature=0.1  # Low temperature for consistent extraction
             )
             
             result = json.loads(response.choices[0].message.content)
