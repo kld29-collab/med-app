@@ -3,9 +3,17 @@ Agent 3: Explanation Agent
 Translates technical interaction data into plain-language explanations.
 """
 import json
+import os
+import sys
 from openai import OpenAI
 from config import Config
 from typing import Dict, List
+
+# Disable environment variable auto-detection that might cause issues
+os.environ.pop('HTTP_PROXY', None)
+os.environ.pop('HTTPS_PROXY', None)
+os.environ.pop('http_proxy', None)
+os.environ.pop('https_proxy', None)
 
 
 class ExplanationAgent:
@@ -13,7 +21,6 @@ class ExplanationAgent:
     
     def __init__(self):
         """Initialize the explanation agent with OpenAI client."""
-        import sys
         print(f"[DEBUG] Initializing ExplanationAgent...", file=sys.stderr)
         
         if not Config.OPENAI_API_KEY:
@@ -26,9 +33,13 @@ class ExplanationAgent:
             print(f"[DEBUG] OpenAI client in ExplanationAgent initialized successfully", file=sys.stderr)
         except TypeError as e:
             print(f"[ERROR] TypeError during OpenAI initialization: {str(e)}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
             raise ValueError(f"OpenAI client initialization failed: {str(e)}")
         except Exception as e:
             print(f"[ERROR] Unexpected error during OpenAI initialization: {str(e)}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
             raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
         
         self.model = Config.OPENAI_MODEL
