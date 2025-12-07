@@ -2,7 +2,7 @@
 Main Flask application for Medication Interaction Tracker.
 Stateless implementation for Vercel serverless deployment.
 """
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 from agents.query_interpreter import QueryInterpreter
 from agents.retrieval_agent import RetrievalAgent
 from agents.explanation_agent import ExplanationAgent
@@ -12,7 +12,11 @@ from config import Config
 import json
 import os
 
-app = Flask(__name__)
+# Get the directory of this file
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, 'static')
+
+app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='/static')
 app.config['SECRET_KEY'] = Config.SECRET_KEY
 
 # Initialize agents (lazy loading for better error handling)
@@ -56,6 +60,12 @@ def get_agents():
 def index():
     """Render the main chat interface."""
     return render_template('index.html')
+
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    """Serve static files explicitly."""
+    return send_from_directory(STATIC_DIR, filename)
 
 
 @app.route('/health')
