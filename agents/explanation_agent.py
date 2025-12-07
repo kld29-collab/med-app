@@ -89,6 +89,16 @@ class ExplanationAgent:
         5. Include appropriate safety disclaimers
         6. Flag any uncertainties or low-confidence data
         7. Explain WHY an interaction might occur if that information is available
+        
+        SEVERITY ASSESSMENT:
+        When assigning severity, use these guidelines:
+        - HIGH/SEVERE: Mentions death, coma, hospitalization, overdose, respiratory failure, organ damage, FDA black box warning, or serious harm
+        - MODERATE: Mentions significant side effects, reduced effectiveness, serious symptoms (but not life-threatening)
+        - MILD: Mentions minor side effects or manageable interactions
+        - UNKNOWN: Only use if truly no information about severity/effects is available
+        
+        If you see concerning language (like FDA warnings about death, serious harm, breathing problems), 
+        classify as HIGH even if the original data says "unknown".
 
         Structure your response as JSON with these fields:
         {
@@ -98,7 +108,7 @@ class ExplanationAgent:
                     "items": ["item1", "item2"],
                     "type": "drug-drug",
                     "explanation": "Plain language explanation",
-                    "severity": "high/medium/low/unknown",
+                    "severity": "high/moderate/mild/unknown",
                     "recommendation": "What the user should do"
                 }
             ],
@@ -127,10 +137,16 @@ class ExplanationAgent:
         Citations:
         {json.dumps(citations, indent=2) if citations else "None"}
 
-        Generate a plain-language explanation based ONLY on this data. If the interaction table is empty 
-        or contains no meaningful interactions, state that clearly. You may reference web search results 
-        and FDA information to provide additional context, but prioritize the authoritative interaction data. 
-        Do not invent interactions that are not in the data."""
+        Generate a plain-language explanation based on this data. 
+        
+        PRIORITY LOGIC:
+        - If interaction table has data: Use it as primary source, supplement with web results and FDA info
+        - If interaction table is empty BUT web search results exist: Use web results as primary source for interaction information
+        - If both are empty: State that no specific interactions were found in available databases
+        
+        Always synthesize multiple sources when available. Do not invent interactions that are not in the data, 
+        but DO use web search results to provide context about drug combinations that the standard databases 
+        don't have indexed interactions for."""
         
         try:
             response = self.client.chat.completions.create(
