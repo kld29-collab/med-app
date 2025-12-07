@@ -55,7 +55,7 @@ class RetrievalAgent:
             results["normalized_medications"] = normalized
             results["metadata"]["sources_queried"].append("RxNorm")
             
-            # Extract normalized names for further queries
+            # Extract normalized names and RxCUIs for further queries
             # Filter out empty strings and ensure we have valid medication names
             normalized_names = [
                 med.get("normalized_name") or med.get("original_name")
@@ -63,11 +63,25 @@ class RetrievalAgent:
                 if (med.get("normalized_name") or med.get("original_name"))
             ]
             
-            # Step 2: Get drug-drug interactions from DrugBank
+            # Extract RxCUIs for interaction checking
+            rxcui_list = [
+                str(med.get("rxcui"))
+                for med in normalized
+                if med.get("rxcui")
+            ]
+            
+            # Step 2: Get drug-drug interactions from RxNorm (public, no auth required)
+            if len(rxcui_list) > 1:
+                interactions = self.api_client.get_drug_interactions_rxnorm(rxcui_list)
+                results["drug_interactions"].extend(interactions)
+                results["metadata"]["sources_queried"].append("RxNorm Interactions")
+            
+            # Step 2b: Optionally get additional interactions from DrugBank (if credentials available)
             if len(normalized_names) > 1:
-                interactions = self.api_client.get_drug_interactions_drugbank(normalized_names)
-                results["drug_interactions"] = interactions
-                results["metadata"]["sources_queried"].append("DrugBank")
+                drugbank_interactions = self.api_client.get_drug_interactions_drugbank(normalized_names)
+                if drugbank_interactions:
+                    results["drug_interactions"].extend(drugbank_interactions)
+                    results["metadata"]["sources_queried"].append("DrugBank")
             
             # Step 3: Get FDA information for each medication
             fda_queried = False

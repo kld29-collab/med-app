@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Medication Interaction Tracker{% endblock %}</title>
+    <title>{% block title %}ExplainRX - Medication Interaction Tracker{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Medication Interaction Tracker</h1>
+            <h1>ExplainRX</h1>
+            <p class="subtitle">Your AI-Powered Medication Interaction Tracker</p>
             <div class="disclaimer-banner">
                 <strong>⚠️ Medical Disclaimer:</strong> This tool is for informational purposes only and does not constitute medical advice. Always consult with a qualified healthcare provider before making decisions about your medications.
             </div>
@@ -21,7 +22,7 @@
         </main>
         
         <footer>
-            <p>For educational purposes only. Not a substitute for professional medical advice.</p>
+            <p>ExplainRX - For educational purposes only. Not a substitute for professional medical advice.</p>
         </footer>
     </div>
     

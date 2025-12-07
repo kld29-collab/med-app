@@ -14,9 +14,8 @@ class Config:
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
     OPENAI_MODEL = 'gpt-4'  # Using GPT-4 as specified
     
-    # RxNorm/UMLS API Configuration
-    UMLS_API_KEY = os.environ.get('UMLS_API_KEY')
-    UMLS_BASE_URL = 'https://uts-ws.nlm.nih.gov/rest'
+    # RxNorm API Configuration (Public REST API - No authentication required)
+    RXNORM_BASE_URL = 'https://rxnav.nlm.nih.gov/REST'
     
     # DrugBank API Configuration
     DRUGBANK_USERNAME = os.environ.get('DRUGBANK_USERNAME')

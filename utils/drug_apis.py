@@ -13,14 +13,14 @@ class DrugAPIClient:
     
     def __init__(self):
         """Initialize API clients."""
-        self.umls_api_key = Config.UMLS_API_KEY
+        self.rxnorm_base_url = Config.RXNORM_BASE_URL
         self.drugbank_username = Config.DRUGBANK_USERNAME
         self.drugbank_password = Config.DRUGBANK_PASSWORD
         self.fda_base_url = Config.FDA_API_BASE_URL
     
     def normalize_drug_name_rxnorm(self, drug_name: str) -> Optional[Dict]:
         """
-        Normalize drug name using RxNorm API.
+        Normalize drug name using RxNorm public REST API (no authentication required).
         
         Args:
             drug_name: Common or brand name of the drug
@@ -28,34 +28,57 @@ class DrugAPIClient:
         Returns:
             Dictionary with normalized drug information or None
         """
-        if not self.umls_api_key:
-            return None
-        
         try:
-            # RxNorm search endpoint
-            url = f"{Config.UMLS_BASE_URL}/search/current"
-            params = {
-                "string": drug_name,
-                "searchType": "exact",
-                "inputType": "sourceUi",
-                "sabs": "RXNORM",
-                "apiKey": self.umls_api_key
-            }
+            # Try exact match first using RxNorm's public API
+            url = f"{self.rxnorm_base_url}/rxcui.json"
+            params = {"name": drug_name}
             
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
             
-            if data.get("result") and data["result"].get("results"):
-                result = data["result"]["results"][0]
-                # Get normalized name, fallback to original drug_name if not available
-                normalized_name = result.get("name") or drug_name
+            # If exact match found
+            if data.get("idGroup") and data["idGroup"].get("rxnormId"):
+                rxcui = data["idGroup"]["rxnormId"][0]
+                
+                # Get the drug name from RxCUI
+                name_url = f"{self.rxnorm_base_url}/rxcui/{rxcui}/property.json"
+                name_response = requests.get(name_url, params={"propName": "RxNorm Name"}, timeout=10)
+                name_data = name_response.json()
+                
+                drug_name_normalized = drug_name
+                if name_data.get("propConceptGroup") and name_data["propConceptGroup"].get("propConcept"):
+                    drug_name_normalized = name_data["propConceptGroup"]["propConcept"][0].get("propValue", drug_name)
+                
                 return {
-                    "rxcui": result.get("ui"),
-                    "name": result.get("name"),
-                    "original_name": drug_name,  # Always preserve original name
-                    "normalized_name": normalized_name,
+                    "rxcui": rxcui,
+                    "name": drug_name_normalized,
+                    "original_name": drug_name,
+                    "normalized_name": drug_name_normalized,
                     "source": "RxNorm"
+                }
+            
+            # If no exact match, try approximate match
+            approx_url = f"{self.rxnorm_base_url}/approximateTerm.json"
+            approx_params = {"term": drug_name, "maxEntries": 1}
+            
+            approx_response = requests.get(approx_url, params=approx_params, timeout=10)
+            approx_response.raise_for_status()
+            approx_data = approx_response.json()
+            
+            if (approx_data.get("approximateGroup") and 
+                approx_data["approximateGroup"].get("candidate") and 
+                len(approx_data["approximateGroup"]["candidate"]) > 0):
+                
+                candidate = approx_data["approximateGroup"]["candidate"][0]
+                return {
+                    "rxcui": candidate.get("rxcui"),
+                    "name": candidate.get("name", drug_name),
+                    "original_name": drug_name,
+                    "normalized_name": candidate.get("name", drug_name),
+                    "source": "RxNorm",
+                    "score": candidate.get("score"),
+                    "rank": candidate.get("rank")
                 }
             
             return None
@@ -63,6 +86,58 @@ class DrugAPIClient:
         except Exception as e:
             print(f"Error normalizing drug name {drug_name}: {str(e)}")
             return None
+    
+    def get_drug_interactions_rxnorm(self, rxcui_list: List[str]) -> List[Dict]:
+        """
+        Get drug interactions using RxNorm public interaction API (no authentication required).
+        
+        Args:
+            rxcui_list: List of RxCUI identifiers
+        
+        Returns:
+            List of interaction dictionaries
+        """
+        interactions = []
+        
+        try:
+            # RxNorm interaction API endpoint
+            rxcuis = "+".join(rxcui_list)
+            url = f"{self.rxnorm_base_url}/interaction/list.json"
+            params = {"rxcuis": rxcuis}
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("fullInteractionTypeGroup"):
+                for group in data["fullInteractionTypeGroup"]:
+                    if group.get("fullInteractionType"):
+                        for interaction_type in group["fullInteractionType"]:
+                            if interaction_type.get("interactionPair"):
+                                for pair in interaction_type["interactionPair"]:
+                                    interaction_concept = pair.get("interactionConcept", [{}])
+                                    description = pair.get("description", "No description available")
+                                    severity = pair.get("severity", "unknown")
+                                    
+                                    # Extract drug names from the interaction concepts
+                                    drugs = [concept.get("minConceptItem", {}).get("name", "Unknown") 
+                                            for concept in interaction_concept if concept.get("minConceptItem")]
+                                    
+                                    if len(drugs) >= 2:
+                                        interactions.append({
+                                            "drug1": drugs[0],
+                                            "drug2": drugs[1],
+                                            "severity": severity,
+                                            "description": description,
+                                            "source": "RxNorm",
+                                            "confidence": "high"
+                                        })
+            
+            return interactions
+            
+        except Exception as e:
+            print(f"Error getting RxNorm interactions: {str(e)}")
+            return []
     
     def get_drug_interactions_drugbank(self, drug_names: List[str]) -> List[Dict]:
         """

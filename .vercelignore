@@ -1,0 +1,14 @@
+# Files to ignore during Vercel deployment
+.env
+.env.local
+.git
+.gitignore
+__pycache__
+*.pyc
+.pytest_cache
+tests/
+*.md
+!README.md
+.vscode
+.idea
+*.log
