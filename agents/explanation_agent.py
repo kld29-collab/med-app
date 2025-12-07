@@ -15,7 +15,13 @@ class ExplanationAgent:
         """Initialize the explanation agent with OpenAI client."""
         if not Config.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY is not configured. Please set it in your environment variables.")
-        self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
+        
+        try:
+            # Initialize OpenAI client with just the API key (no proxies or other params)
+            self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
+        except Exception as e:
+            raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
+        
         self.model = Config.OPENAI_MODEL
     
     def generate_explanation(self, interaction_data: Dict, user_context: Dict = None) -> Dict:
