@@ -28,19 +28,32 @@ class ExplanationAgent:
         
         try:
             print(f"[DEBUG] Initializing OpenAI client in ExplanationAgent...", file=sys.stderr)
-            # Initialize OpenAI client with just the API key (no proxies or other params)
-            self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
-            print(f"[DEBUG] OpenAI client in ExplanationAgent initialized successfully", file=sys.stderr)
-        except TypeError as e:
-            print(f"[ERROR] TypeError during OpenAI initialization: {str(e)}", file=sys.stderr)
-            import traceback
-            traceback.print_exc(file=sys.stderr)
-            raise ValueError(f"OpenAI client initialization failed: {str(e)}")
+            # Initialize OpenAI client - try with minimal config first
+            import httpx
+            
+            # Create a custom HTTP client without proxy
+            http_client = httpx.Client(
+                timeout=30.0,
+                verify=True,
+                proxies=None  # Explicitly set to None
+            )
+            
+            self.client = OpenAI(
+                api_key=Config.OPENAI_API_KEY,
+                http_client=http_client
+            )
+            print(f"[DEBUG] OpenAI client in ExplanationAgent initialized successfully with custom http_client", file=sys.stderr)
         except Exception as e:
-            print(f"[ERROR] Unexpected error during OpenAI initialization: {str(e)}", file=sys.stderr)
-            import traceback
-            traceback.print_exc(file=sys.stderr)
-            raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
+            print(f"[ERROR] Failed with custom http_client, trying basic init: {str(e)}", file=sys.stderr)
+            try:
+                # Fallback: try without http_client parameter
+                self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
+                print(f"[DEBUG] OpenAI client in ExplanationAgent initialized successfully with basic init", file=sys.stderr)
+            except Exception as e2:
+                print(f"[ERROR] Basic init also failed: {str(e2)}", file=sys.stderr)
+                import traceback
+                traceback.print_exc(file=sys.stderr)
+                raise ValueError(f"Failed to initialize OpenAI client: {str(e2)}")
         
         self.model = Config.OPENAI_MODEL
     
