@@ -71,11 +71,17 @@ def serve_static(filename):
 @app.route('/health')
 def health_check():
     """Health check endpoint for Vercel."""
+    import os
+    openai_key = Config.OPENAI_API_KEY
+    key_masked = f"***...{openai_key[-10:]}" if openai_key else "NOT SET"
+    
     return jsonify({
         "status": "healthy",
         "service": "ExplainRX",
         "openai_configured": bool(Config.OPENAI_API_KEY),
-        "secret_key_configured": bool(Config.SECRET_KEY)
+        "openai_key_preview": key_masked,
+        "secret_key_configured": bool(Config.SECRET_KEY),
+        "flask_env": os.environ.get('FLASK_ENV', 'not set')
     })
 
 
