@@ -83,7 +83,21 @@ class RetrievalAgent:
                 if interactions:
                     results["metadata"]["sources_queried"].append("RxNorm Interactions")
             
-            # Step 2b: Optionally get additional interactions from DrugBank (if credentials available)
+            # Step 2b: If no interactions found in RxNorm, search the web for interaction information
+            if len(medications) > 1 and len(results["drug_interactions"]) == 0:
+                import sys
+                print(f"[DEBUG] No RxNorm interactions found, searching web for interaction info", file=sys.stderr)
+                interaction_search_query = f"{medications[0]} {medications[1]} drug interaction"
+                if len(medications) > 2:
+                    interaction_search_query = "drug interactions " + " ".join(medications)
+                
+                web_interactions = self.api_client.search_drug_websites(interaction_search_query)
+                if web_interactions:
+                    print(f"[DEBUG] Found {len(web_interactions)} web results for interactions", file=sys.stderr)
+                    results["web_sources"].extend(web_interactions)
+                    results["metadata"]["sources_queried"].append("Web Search - Interactions")
+            
+            # Step 2c: Optionally get additional interactions from DrugBank (if credentials available)
             if len(normalized_names) > 1:
                 drugbank_interactions = self.api_client.get_drug_interactions_drugbank(normalized_names)
                 if drugbank_interactions:
