@@ -92,12 +92,12 @@ class TestResultSummarizer:
             }
         }
         
-        summary = summarizer._basic_summary(data)
+        summary = summarizer._basic_summary(data, "")
         assert "No known interactions" in summary or "0" in summary
     
     def test_disclaimer_always_present(self, summarizer, sample_interaction_data):
         """Test that medical disclaimer is always included."""
-        summary = summarizer._basic_summary(sample_interaction_data)
+        summary = summarizer._basic_summary(sample_interaction_data, "")
         
         disclaimer_keywords = ["medical advice", "healthcare provider", "educational"]
         has_disclaimer = any(keyword in summary.lower() for keyword in disclaimer_keywords)
