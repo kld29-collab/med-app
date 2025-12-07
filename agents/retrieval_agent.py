@@ -51,7 +51,10 @@ class RetrievalAgent:
         
         # Step 1: Normalize medication names using RxNorm
         if medications:
+            import sys
+            print(f"[DEBUG] Input medications: {medications}", file=sys.stderr)
             normalized = normalize_medications(medications, self.api_client)
+            print(f"[DEBUG] Normalized medications: {normalized}", file=sys.stderr)
             results["normalized_medications"] = normalized
             results["metadata"]["sources_queried"].append("RxNorm")
             
@@ -72,9 +75,13 @@ class RetrievalAgent:
             
             # Step 2: Get drug-drug interactions from RxNorm (public, no auth required)
             if len(rxcui_list) > 1:
+                import sys
+                print(f"[DEBUG] Querying RxNorm interactions for RxCUIs: {rxcui_list}", file=sys.stderr)
                 interactions = self.api_client.get_drug_interactions_rxnorm(rxcui_list)
+                print(f"[DEBUG] RxNorm returned {len(interactions)} interactions", file=sys.stderr)
                 results["drug_interactions"].extend(interactions)
-                results["metadata"]["sources_queried"].append("RxNorm Interactions")
+                if interactions:
+                    results["metadata"]["sources_queried"].append("RxNorm Interactions")
             
             # Step 2b: Optionally get additional interactions from DrugBank (if credentials available)
             if len(normalized_names) > 1:

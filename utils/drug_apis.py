@@ -28,14 +28,17 @@ class DrugAPIClient:
         Returns:
             Dictionary with normalized drug information or None
         """
+        import sys
         try:
             # Try exact match first using RxNorm's public API
             url = f"{self.rxnorm_base_url}/rxcui.json"
             params = {"name": drug_name}
             
+            print(f"[DEBUG] RxNorm exact match request: {url} with params {params}", file=sys.stderr)
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
+            print(f"[DEBUG] RxNorm exact match response: {data}", file=sys.stderr)
             
             # If exact match found
             if data.get("idGroup") and data["idGroup"].get("rxnormId"):
@@ -50,28 +53,33 @@ class DrugAPIClient:
                 if name_data.get("propConceptGroup") and name_data["propConceptGroup"].get("propConcept"):
                     drug_name_normalized = name_data["propConceptGroup"]["propConcept"][0].get("propValue", drug_name)
                 
-                return {
+                result = {
                     "rxcui": rxcui,
                     "name": drug_name_normalized,
                     "original_name": drug_name,
                     "normalized_name": drug_name_normalized,
                     "source": "RxNorm"
                 }
+                print(f"[DEBUG] Exact match found for {drug_name}: {result}", file=sys.stderr)
+                return result
             
             # If no exact match, try approximate match
+            print(f"[DEBUG] No exact match for {drug_name}, trying approximate match", file=sys.stderr)
             approx_url = f"{self.rxnorm_base_url}/approximateTerm.json"
             approx_params = {"term": drug_name, "maxEntries": 1}
             
+            print(f"[DEBUG] RxNorm approx match request: {approx_url} with params {approx_params}", file=sys.stderr)
             approx_response = requests.get(approx_url, params=approx_params, timeout=10)
             approx_response.raise_for_status()
             approx_data = approx_response.json()
+            print(f"[DEBUG] RxNorm approx match response: {approx_data}", file=sys.stderr)
             
             if (approx_data.get("approximateGroup") and 
                 approx_data["approximateGroup"].get("candidate") and 
                 len(approx_data["approximateGroup"]["candidate"]) > 0):
                 
                 candidate = approx_data["approximateGroup"]["candidate"][0]
-                return {
+                result = {
                     "rxcui": candidate.get("rxcui"),
                     "name": candidate.get("name", drug_name),
                     "original_name": drug_name,
@@ -80,11 +88,14 @@ class DrugAPIClient:
                     "score": candidate.get("score"),
                     "rank": candidate.get("rank")
                 }
+                print(f"[DEBUG] Approximate match found for {drug_name}: {result}", file=sys.stderr)
+                return result
             
+            print(f"[DEBUG] No match found for {drug_name}", file=sys.stderr)
             return None
             
         except Exception as e:
-            print(f"Error normalizing drug name {drug_name}: {str(e)}")
+            print(f"[DEBUG] Error normalizing drug name {drug_name}: {str(e)}", file=sys.stderr)
             return None
     
     def get_drug_interactions_rxnorm(self, rxcui_list: List[str]) -> List[Dict]:
@@ -97,6 +108,7 @@ class DrugAPIClient:
         Returns:
             List of interaction dictionaries
         """
+        import sys
         interactions = []
         
         try:
@@ -105,9 +117,11 @@ class DrugAPIClient:
             url = f"{self.rxnorm_base_url}/interaction/list.json"
             params = {"rxcuis": rxcuis}
             
+            print(f"[DEBUG] RxNorm interaction request: {url} with params {params}", file=sys.stderr)
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
+            print(f"[DEBUG] RxNorm interaction response: {data}", file=sys.stderr)
             
             if data.get("fullInteractionTypeGroup"):
                 for group in data["fullInteractionTypeGroup"]:
@@ -124,14 +138,16 @@ class DrugAPIClient:
                                             for concept in interaction_concept if concept.get("minConceptItem")]
                                     
                                     if len(drugs) >= 2:
-                                        interactions.append({
+                                        interaction_obj = {
                                             "drug1": drugs[0],
                                             "drug2": drugs[1],
                                             "severity": severity,
                                             "description": description,
                                             "source": "RxNorm",
                                             "confidence": "high"
-                                        })
+                                        }
+                                        print(f"[DEBUG] Found interaction: {interaction_obj}", file=sys.stderr)
+                                        interactions.append(interaction_obj)
             
             return interactions
             
@@ -290,10 +306,13 @@ def normalize_medications(medications: List[str], api_client: DrugAPIClient) -> 
     Returns:
         List of normalized medication dictionaries
     """
+    import sys
     normalized = []
     
     for med in medications:
+        print(f"[DEBUG] Normalizing medication: {med}", file=sys.stderr)
         normalized_med = api_client.normalize_drug_name_rxnorm(med)
+        print(f"[DEBUG] Result for {med}: {normalized_med}", file=sys.stderr)
         if normalized_med:
             normalized.append(normalized_med)
         else:
