@@ -42,6 +42,15 @@ function setupEventListeners() {
     // Character count
     userInput.addEventListener('input', updateCharCount);
     
+    // Handle Enter to submit, Shift+Enter for new lines
+    userInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit(e);
+        }
+        // Shift+Enter will allow default behavior (new line)
+    });
+    
     // Sidebar toggle
     toggleSidebar.addEventListener('click', () => {
         profileSidebar.classList.add('hidden');
