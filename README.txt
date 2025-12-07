@@ -1,10 +1,13 @@
-# Medication Interaction Tracker
+# Medication Interaction Tracker - README & Build Plan
+
+## Project Overview
 
 A web-based Medication Interaction Tracker that helps patients identify potential interactions between prescription medications, over-the-counter drugs, supplements, foods, and lifestyle factors using natural language queries powered by LLMs.
 
 ## Technology Stack
 
 ### Backend
+
 - **Web Framework**: Flask (Python)
 - **LLM**: OpenAI GPT-4 (via OpenAI API)
 - **Database APIs**: 
@@ -14,31 +17,53 @@ A web-based Medication Interaction Tracker that helps patients identify potentia
 - **Session Management**: Client-side storage (localStorage) for Vercel serverless deployment
 
 ### Frontend
+
 - **Framework**: Flask templates with Jinja2
-- **Styling**: Modern CSS with responsive design
-- **JavaScript**: Vanilla JS for interactivity
+- **Styling**: Modern CSS (Bootstrap or Tailwind CSS recommended)
+- **JavaScript**: Vanilla JS or minimal framework for interactivity
 
 ### Deployment
-- **Primary**: **Vercel** (serverless Flask support)
-- **Note**: User context stored client-side (localStorage) for serverless compatibility
+
+- **Primary**: **Vercel** (serverless Flask support - confirmed deployment platform)
+- **Note**: Since Vercel uses serverless functions, user context will be stored client-side (localStorage) rather than server-side Flask sessions
 
 ## Architecture: Three-Agent System
 
 The system uses a clear separation between deterministic database operations and LLM processing:
 
 ### 1. Query Interpreter Agent (LLM Layer)
-- Extracts medication names, foods, supplements from natural language
-- Outputs structured JSON query plan
+
+- **Input**: User's natural language question
+- **Process**: GPT-4 extracts medication names, foods, supplements, and context
+- **Output**: Structured JSON query plan for the retrieval agent
+- **Example Output**:
+```json
+{
+  "medications": ["Tylenol", "Sertraline"],
+  "foods": ["grapefruit juice"],
+  "query_type": "interaction_check",
+  "user_context": {"age": 45, "weight": 70}
+}
+```
+
 
 ### 2. Retrieval/Database Agent (Deterministic Layer)
-- Executes API calls to RxNorm, DrugBank, FDA
-- Returns structured interaction tables
+
+- **Input**: Structured query from Agent 1
+- **Process**: 
+  - Execute API calls to RxNorm (normalize drug names)
+  - Query DrugBank API (retrieve interaction data)
+  - Search FDA database (official prescribing info)
+  - Perform web RAG searches on drug websites
+- **Output**: Structured table of interactions with severity scores, citations, metadata
 - **No LLM involvement** - pure deterministic data retrieval
 
 ### 3. Explanation Agent (LLM Layer)
-- Translates technical data into plain language
-- Flags uncertainties and includes disclaimers
-- Grounded in retrieved data only
+
+- **Input**: Interaction table from Agent 2
+- **Process**: GPT-4 translates technical data into plain language
+- **Output**: User-friendly explanation with disclaimers, flagging uncertainties
+- **Grounding**: Only uses data from Agent 2 (no hallucinations)
 
 ## Project Structure
 
@@ -48,7 +73,6 @@ med-app/
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
-├── vercel.json
 ├── app.py                 # Main Flask application
 ├── config.py              # Configuration settings
 ├── agents/
@@ -63,7 +87,8 @@ med-app/
 │   └── validators.py      # Input validation
 ├── templates/
 │   ├── base.html          # Base template
-│   └── index.html         # Main chat interface
+│   ├── index.html         # Main chat interface
+│   └── profile.html       # User profile sidebar
 ├── static/
 │   ├── css/
 │   │   └── style.css      # Custom styles
@@ -74,9 +99,39 @@ med-app/
     └── test_apis.py
 ```
 
+## Key Features Implementation
+
+### 1. Conversational Interface
+
+- Chat-style UI with message history
+- Natural language input processing
+- Context-aware responses
+
+### 2. User Profile Sidebar
+
+- Age, weight, height input
+- Existing medications list
+- Health conditions
+- Stored client-side (localStorage) for anonymous users
+
+### 3. API Integrations
+
+- **RxNorm API**: Normalize medication names to standard identifiers
+- **DrugBank API**: Retrieve drug-drug interaction data
+- **FDA API**: Access official drug labeling information
+- **Web RAG**: Search drug manufacturer websites for additional context
+
+### 4. Safety Features
+
+- Prominent disclaimer on all pages
+- Confidence scores for interactions
+- Uncertainty flags when sources conflict
+- Recommendations to consult healthcare providers
+
 ## Setup Instructions
 
 ### Prerequisites
+
 - Python 3.9+
 - API keys for:
   - OpenAI (GPT-4)
@@ -106,6 +161,7 @@ python app.py
 ```
 
 4. **Access the app**:
+
 - Local: http://localhost:5000
 - Deploy to Vercel for public access
 
@@ -133,28 +189,30 @@ USER: "Can I take Tylenol with my antidepressant?"
    antidepressants, but you should consult your doctor..."
 ```
 
+## Future Enhancements
+
+- Interaction severity risk levels (High/Medium/Low)
+- Confidence scores for each interaction
+- User authentication (optional)
+- Conversation history persistence
+- Export interaction reports
+
 ## Important Notes
 
-- **Medical Disclaimer**: This tool is for informational purposes only and does not constitute medical advice. Always consult with a qualified healthcare provider.
+- **Medical Disclaimer**: This tool is for informational purposes only and does not replace professional medical advice
 - **API Rate Limits**: Implement caching and rate limiting for external APIs
 - **Cost Management**: Monitor OpenAI API usage (GPT-4 is more expensive than GPT-3.5)
 - **Data Privacy**: User data stored only client-side (localStorage) for anonymous users
 
-## Deployment to Vercel
-
-1. Install Vercel CLI: `npm i -g vercel`
-2. Run `vercel` in the project directory
-3. Configure environment variables in Vercel dashboard
-4. Deploy: `vercel --prod`
-
 ## Development Roadmap
 
-- [x] Set up Flask application structure
-- [x] Implement Agent 1 (Query Interpreter)
-- [x] Implement Agent 2 (Retrieval Agent) with API integrations
-- [x] Implement Agent 3 (Explanation Agent)
-- [x] Build frontend UI with chat interface
-- [x] Add user profile sidebar
-- [x] Add disclaimers and safety features
-- [ ] Deploy to public URL
-- [ ] Testing and refinement
+1. Set up Flask application structure
+2. Implement Agent 1 (Query Interpreter)
+3. Implement Agent 2 (Retrieval Agent) with API integrations
+4. Implement Agent 3 (Explanation Agent)
+5. Build frontend UI with chat interface
+6. Add user profile sidebar
+7. Add disclaimers and safety features
+8. Deploy to public URL
+9. Testing and refinement
+
