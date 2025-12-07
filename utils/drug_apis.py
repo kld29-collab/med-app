@@ -101,47 +101,107 @@ class DrugAPIClient:
     def get_drug_interactions_rxnorm(self, rxcui_list: List[str]) -> List[Dict]:
         """
         Get drug interactions using RxNorm public interaction API (no authentication required).
-        NOTE: RxNorm's interaction API has limited coverage. This serves as a supplementary source.
+        
+        Uses the reliable /interaction/interaction.json endpoint for single drugs,
+        and /interaction/list.json for pairwise comparisons.
         
         Args:
-            rxcui_list: List of RxCUI identifiers
+            rxcui_list: List of RxCUI identifiers (must be ingredient or semantic clinical drug RXCUIs)
         
         Returns:
-            List of interaction dictionaries (may be empty)
+            List of interaction dictionaries
         """
         import sys
         interactions = []
         
         try:
-            # RxNorm's interaction API is unreliable and has limited data
-            # We try it, but don't fail if it returns 404
-            for i in range(len(rxcui_list)):
-                for j in range(i + 1, len(rxcui_list)):
-                    rxcui1 = rxcui_list[i]
-                    rxcui2 = rxcui_list[j]
+            # Strategy: Query each drug's interactions individually first
+            # This is more reliable than the pairwise endpoint
+            all_drug_interactions = {}
+            
+            for rxcui in rxcui_list:
+                # Use the reliable /interaction/interaction.json endpoint
+                url = f"{self.rxnorm_base_url}/interaction/interaction.json"
+                params = {"rxcui": rxcui}
+                
+                print(f"[DEBUG] Querying RxNorm interactions for single RXCUI {rxcui}", file=sys.stderr)
+                print(f"[DEBUG] URL: {url}?rxcui={rxcui}", file=sys.stderr)
+                
+                try:
+                    response = requests.get(url, params=params, timeout=10)
                     
-                    # Try different endpoint formats
-                    endpoints = [
-                        f"{self.rxnorm_base_url}/interaction/list.json",
-                        f"{self.rxnorm_base_url}/interaction/listJson.json"
-                    ]
+                    if response.status_code == 404:
+                        print(f"[DEBUG] RXCUI {rxcui} has no interaction data in RxNorm (404)", file=sys.stderr)
+                        continue
                     
-                    for url in endpoints:
+                    if response.status_code == 400:
+                        print(f"[DEBUG] RXCUI {rxcui} is invalid or non-interactable (400)", file=sys.stderr)
+                        continue
+                    
+                    response.raise_for_status()
+                    data = response.json()
+                    print(f"[DEBUG] RxNorm single-drug response keys: {list(data.keys())}", file=sys.stderr)
+                    
+                    # Store all interactions for this drug
+                    all_drug_interactions[rxcui] = data
+                    
+                    # Parse the interaction response
+                    if data.get("interactionTypeGroup"):
+                        for group in data["interactionTypeGroup"]:
+                            if group.get("interactionType"):
+                                for interaction_type in group["interactionType"]:
+                                    if interaction_type.get("interactionPair"):
+                                        for pair in interaction_type["interactionPair"]:
+                                            interaction_concept = pair.get("interactionConcept", [{}])
+                                            description = pair.get("description", "No description available")
+                                            severity = pair.get("severity", "unknown")
+                                            
+                                            # Extract drug names from the interaction concepts
+                                            drugs = [concept.get("minConceptItem", {}).get("name", "Unknown") 
+                                                    for concept in interaction_concept if concept.get("minConceptItem")]
+                                            
+                                            if len(drugs) >= 2:
+                                                interaction_obj = {
+                                                    "drug1": drugs[0],
+                                                    "drug2": drugs[1],
+                                                    "severity": severity,
+                                                    "description": description,
+                                                    "source": "RxNorm",
+                                                    "confidence": "high"
+                                                }
+                                                print(f"[DEBUG] Found interaction: {interaction_obj}", file=sys.stderr)
+                                                interactions.append(interaction_obj)
+                    else:
+                        print(f"[DEBUG] RXCUI {rxcui} returned response but no interactionTypeGroup", file=sys.stderr)
+                        
+                except requests.exceptions.RequestException as e:
+                    print(f"[DEBUG] RxNorm request error for RXCUI {rxcui}: {str(e)}", file=sys.stderr)
+                    continue
+            
+            # If we have multiple RXCUIs, also try the pairwise endpoint as a supplement
+            if len(rxcui_list) > 1:
+                print(f"[DEBUG] Attempting pairwise interaction lookup", file=sys.stderr)
+                for i in range(len(rxcui_list)):
+                    for j in range(i + 1, len(rxcui_list)):
+                        rxcui1 = rxcui_list[i]
+                        rxcui2 = rxcui_list[j]
+                        
+                        url = f"{self.rxnorm_base_url}/interaction/list.json"
                         params = {"rxcuis": f"{rxcui1}+{rxcui2}"}
                         
-                        print(f"[DEBUG] RxNorm interaction request: {url} with params {params}", file=sys.stderr)
+                        print(f"[DEBUG] Pairwise lookup: {rxcui1} + {rxcui2}", file=sys.stderr)
+                        
                         try:
                             response = requests.get(url, params=params, timeout=10)
                             
-                            if response.status_code == 404:
-                                print(f"[DEBUG] RxNorm endpoint {url} returned 404 - no data for this combination", file=sys.stderr)
+                            if response.status_code in [404, 400]:
+                                print(f"[DEBUG] No pairwise interaction data for {rxcui1}+{rxcui2}", file=sys.stderr)
                                 continue
                             
                             response.raise_for_status()
                             data = response.json()
-                            print(f"[DEBUG] RxNorm response: {data}", file=sys.stderr)
                             
-                            # Parse the interaction response if it exists
+                            # Parse pairwise response
                             if data.get("fullInteractionTypeGroup"):
                                 for group in data["fullInteractionTypeGroup"]:
                                     if group.get("fullInteractionType"):
@@ -152,7 +212,6 @@ class DrugAPIClient:
                                                     description = pair.get("description", "No description available")
                                                     severity = pair.get("severity", "unknown")
                                                     
-                                                    # Extract drug names from the interaction concepts
                                                     drugs = [concept.get("minConceptItem", {}).get("name", "Unknown") 
                                                             for concept in interaction_concept if concept.get("minConceptItem")]
                                                     
@@ -165,15 +224,18 @@ class DrugAPIClient:
                                                             "source": "RxNorm",
                                                             "confidence": "high"
                                                         }
-                                                        print(f"[DEBUG] Found interaction: {interaction_obj}", file=sys.stderr)
-                                                        interactions.append(interaction_obj)
-                                break  # Found working endpoint
-                                
+                                                        # Check if we already have this interaction
+                                                        if not any(i["drug1"] == interaction_obj["drug1"] and 
+                                                                  i["drug2"] == interaction_obj["drug2"] 
+                                                                  for i in interactions):
+                                                            interactions.append(interaction_obj)
+                                                            print(f"[DEBUG] Found pairwise interaction: {interaction_obj}", file=sys.stderr)
+                                                            
                         except requests.exceptions.RequestException as e:
-                            print(f"[DEBUG] RxNorm request error for {rxcui1}+{rxcui2}: {str(e)}", file=sys.stderr)
+                            print(f"[DEBUG] Pairwise lookup error: {str(e)}", file=sys.stderr)
                             continue
             
-            print(f"[DEBUG] RxNorm total interactions found: {len(interactions)}", file=sys.stderr)
+            print(f"[DEBUG] Total RxNorm interactions found: {len(interactions)}", file=sys.stderr)
             return interactions
             
         except Exception as e:
