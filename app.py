@@ -10,20 +10,47 @@ from utils.session_manager import get_default_user_context, merge_user_context
 from utils.validators import validate_user_query, validate_user_context
 from config import Config
 import json
+import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = Config.SECRET_KEY
 
-# Initialize agents
-query_interpreter = QueryInterpreter()
-retrieval_agent = RetrievalAgent()
-explanation_agent = ExplanationAgent()
+# Initialize agents (lazy loading for better error handling)
+query_interpreter = None
+retrieval_agent = None
+explanation_agent = None
+
+def get_agents():
+    """Lazy initialization of agents to handle missing API keys gracefully."""
+    global query_interpreter, retrieval_agent, explanation_agent
+    
+    if query_interpreter is None:
+        try:
+            query_interpreter = QueryInterpreter()
+            retrieval_agent = RetrievalAgent()
+            explanation_agent = ExplanationAgent()
+        except Exception as e:
+            print(f"Error initializing agents: {str(e)}")
+            raise
+    
+    return query_interpreter, retrieval_agent, explanation_agent
 
 
 @app.route('/')
 def index():
     """Render the main chat interface."""
     return render_template('index.html')
+
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint for Vercel."""
+    return jsonify({
+        "status": "healthy",
+        "service": "ExplainRX",
+        "openai_configured": bool(Config.OPENAI_API_KEY),
+        "secret_key_configured": bool(Config.SECRET_KEY)
+    })
 
 
 @app.route('/api/query', methods=['POST'])
@@ -54,8 +81,11 @@ def handle_query():
         # Default to empty context if not provided
         user_context = data.get('user_context') or get_default_user_context()
         
+        # Initialize agents (lazy loading)
+        qi, ra, ea = get_agents()
+        
         # Agent 1: Query Interpreter
-        query_plan = query_interpreter.interpret_query(user_query, user_context)
+        query_plan = qi.interpret_query(user_query, user_context)
         
         if query_plan.get('error'):
             return jsonify({
@@ -64,16 +94,16 @@ def handle_query():
             }), 500
         
         # Agent 2: Retrieval Agent (Deterministic Layer)
-        interaction_data = retrieval_agent.retrieve_interactions(query_plan)
+        interaction_data = ra.retrieve_interactions(query_plan)
         
         # Agent 3: Explanation Agent
-        explanation = explanation_agent.generate_explanation(
+        explanation = ea.generate_explanation(
             interaction_data, 
             user_context
         )
         
         # Format explanation for display
-        formatted_explanation = explanation_agent.format_for_display(explanation)
+        formatted_explanation = ea.format_for_display(explanation)
         
         return jsonify({
             "success": True,

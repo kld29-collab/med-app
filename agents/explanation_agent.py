@@ -13,6 +13,8 @@ class ExplanationAgent:
     
     def __init__(self):
         """Initialize the explanation agent with OpenAI client."""
+        if not Config.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY is not configured. Please set it in your environment variables.")
         self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
         self.model = Config.OPENAI_MODEL
     
