@@ -13,13 +13,23 @@ class QueryInterpreter:
     
     def __init__(self):
         """Initialize the query interpreter with OpenAI client."""
+        import sys
+        print(f"[DEBUG] Python version: {sys.version}", file=sys.stderr)
+        print(f"[DEBUG] OpenAI module location: {__import__('openai').__file__}", file=sys.stderr)
+        
         if not Config.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY is not configured. Please set it in your environment variables.")
         
         try:
+            print(f"[DEBUG] Initializing OpenAI client...", file=sys.stderr)
             # Initialize OpenAI client with just the API key (no proxies or other params)
             self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
+            print(f"[DEBUG] OpenAI client initialized successfully", file=sys.stderr)
+        except TypeError as e:
+            print(f"[ERROR] TypeError during OpenAI initialization: {str(e)}", file=sys.stderr)
+            raise ValueError(f"OpenAI client initialization failed: {str(e)}")
         except Exception as e:
+            print(f"[ERROR] Unexpected error during OpenAI initialization: {str(e)}", file=sys.stderr)
             raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
         
         self.model = Config.OPENAI_MODEL
