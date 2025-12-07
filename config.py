@@ -22,6 +22,9 @@ class Config:
     DRUGBANK_PASSWORD = os.environ.get('DRUGBANK_PASSWORD')
     DRUGBANK_BASE_URL = 'https://go.drugbank.com'
     
+    # SerpAPI Configuration (for web search RAG)
+    SERPAPI_KEY = os.environ.get('SERPAPI_KEY')
+    
     # FDA API Configuration
     FDA_API_BASE_URL = os.environ.get('FDA_API_BASE_URL', 'https://api.fda.gov')
     

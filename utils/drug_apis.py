@@ -230,8 +230,7 @@ class DrugAPIClient:
     
     def search_drug_websites(self, drug_name: str) -> List[Dict]:
         """
-        Perform web search for drug information (RAG approach).
-        This would typically use a search API or web scraping.
+        Perform web search for drug information using SerpAPI (RAG approach).
         
         Args:
             drug_name: Name of the drug
@@ -239,19 +238,45 @@ class DrugAPIClient:
         Returns:
             List of search results with drug information
         """
-        # Placeholder for web RAG implementation
-        # In production, this would use a search API (e.g., Google Custom Search, Bing)
-        # or scrape trusted drug information websites
+        if not Config.SERPAPI_KEY:
+            # Fallback if SerpAPI key is not configured
+            return []
         
-        return [
-            {
-                "drug_name": drug_name,
-                "source": "web_search",
-                "snippet": f"Information about {drug_name} from web sources",
-                "url": "",
-                "confidence": "low"
+        try:
+            from serpapi import GoogleSearch
+            
+            params = {
+                "q": f"{drug_name} medication side effects interactions",
+                "api_key": Config.SERPAPI_KEY,
+                "num": 3,  # Get top 3 results
+                "engine": "google"
             }
-        ]
+            
+            search = GoogleSearch(params)
+            results = search.get_dict()
+            
+            web_results = []
+            
+            # Extract organic search results
+            if "organic_results" in results:
+                for result in results["organic_results"][:3]:  # Limit to top 3
+                    web_results.append({
+                        "drug_name": drug_name,
+                        "source": "web_search",
+                        "title": result.get("title", ""),
+                        "snippet": result.get("snippet", ""),
+                        "url": result.get("link", ""),
+                        "confidence": "medium"
+                    })
+            
+            return web_results
+            
+        except ImportError:
+            print(f"SerpAPI library not available. Install: pip install google-search-results")
+            return []
+        except Exception as e:
+            print(f"Error searching drug websites for {drug_name}: {str(e)}")
+            return []
 
 
 def normalize_medications(medications: List[str], api_client: DrugAPIClient) -> List[Dict]:

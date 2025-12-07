@@ -74,6 +74,8 @@ class ExplanationAgent:
         interaction_table = interaction_data.get("interaction_table", [])
         normalized_medications = interaction_data.get("normalized_medications", [])
         citations = interaction_data.get("citations", [])
+        web_sources = interaction_data.get("web_sources", [])
+        fda_info = interaction_data.get("fda_info", [])
         
         system_prompt = """You are a medical information translator. Your job is to take technical 
         medication interaction data and explain it in plain, everyday language that non-medical users 
@@ -113,6 +115,12 @@ class ExplanationAgent:
         Interaction Table:
         {json.dumps(interaction_table, indent=2)}
 
+        FDA Information:
+        {json.dumps(fda_info, indent=2) if fda_info else "None"}
+
+        Web Search Results (additional context):
+        {json.dumps(web_sources[:3], indent=2) if web_sources else "None"}
+
         User Context:
         {json.dumps(user_context, indent=2) if user_context else "None provided"}
 
@@ -120,8 +128,9 @@ class ExplanationAgent:
         {json.dumps(citations, indent=2) if citations else "None"}
 
         Generate a plain-language explanation based ONLY on this data. If the interaction table is empty 
-        or contains no meaningful interactions, state that clearly. Do not invent interactions that are 
-        not in the data."""
+        or contains no meaningful interactions, state that clearly. You may reference web search results 
+        and FDA information to provide additional context, but prioritize the authoritative interaction data. 
+        Do not invent interactions that are not in the data."""
         
         try:
             response = self.client.chat.completions.create(
