@@ -101,72 +101,83 @@ class DrugAPIClient:
     def get_drug_interactions_rxnorm(self, rxcui_list: List[str]) -> List[Dict]:
         """
         Get drug interactions using RxNorm public interaction API (no authentication required).
+        NOTE: RxNorm's interaction API has limited coverage. This serves as a supplementary source.
         
         Args:
             rxcui_list: List of RxCUI identifiers
         
         Returns:
-            List of interaction dictionaries
+            List of interaction dictionaries (may be empty)
         """
         import sys
         interactions = []
         
         try:
-            # RxNorm interaction API endpoint - use interactions endpoint for each pair
+            # RxNorm's interaction API is unreliable and has limited data
+            # We try it, but don't fail if it returns 404
             for i in range(len(rxcui_list)):
                 for j in range(i + 1, len(rxcui_list)):
                     rxcui1 = rxcui_list[i]
                     rxcui2 = rxcui_list[j]
                     
-                    # Query interactions between two drugs
-                    url = f"{self.rxnorm_base_url}/interaction/listJson.json"
-                    params = {"rxcuis": f"{rxcui1}+{rxcui2}"}
+                    # Try different endpoint formats
+                    endpoints = [
+                        f"{self.rxnorm_base_url}/interaction/list.json",
+                        f"{self.rxnorm_base_url}/interaction/listJson.json"
+                    ]
                     
-                    print(f"[DEBUG] RxNorm interaction request: {url} with params {params}", file=sys.stderr)
-                    try:
-                        response = requests.get(url, params=params, timeout=10)
-                        response.raise_for_status()
-                        data = response.json()
-                        print(f"[DEBUG] RxNorm interaction response for {rxcui1}+{rxcui2}: {data}", file=sys.stderr)
+                    for url in endpoints:
+                        params = {"rxcuis": f"{rxcui1}+{rxcui2}"}
                         
-                        # Parse the interaction response
-                        if data.get("fullInteractionTypeGroup"):
-                            for group in data["fullInteractionTypeGroup"]:
-                                if group.get("fullInteractionType"):
-                                    for interaction_type in group["fullInteractionType"]:
-                                        if interaction_type.get("interactionPair"):
-                                            for pair in interaction_type["interactionPair"]:
-                                                interaction_concept = pair.get("interactionConcept", [{}])
-                                                description = pair.get("description", "No description available")
-                                                severity = pair.get("severity", "unknown")
-                                                
-                                                # Extract drug names from the interaction concepts
-                                                drugs = [concept.get("minConceptItem", {}).get("name", "Unknown") 
-                                                        for concept in interaction_concept if concept.get("minConceptItem")]
-                                                
-                                                if len(drugs) >= 2:
-                                                    interaction_obj = {
-                                                        "drug1": drugs[0],
-                                                        "drug2": drugs[1],
-                                                        "severity": severity,
-                                                        "description": description,
-                                                        "source": "RxNorm",
-                                                        "confidence": "high"
-                                                    }
-                                                    print(f"[DEBUG] Found interaction: {interaction_obj}", file=sys.stderr)
-                                                    interactions.append(interaction_obj)
-                        
-                    except requests.exceptions.HTTPError as e:
-                        if e.response.status_code == 404:
-                            print(f"[DEBUG] No interactions found for {rxcui1}+{rxcui2} (404 response)", file=sys.stderr)
+                        print(f"[DEBUG] RxNorm interaction request: {url} with params {params}", file=sys.stderr)
+                        try:
+                            response = requests.get(url, params=params, timeout=10)
+                            
+                            if response.status_code == 404:
+                                print(f"[DEBUG] RxNorm endpoint {url} returned 404 - no data for this combination", file=sys.stderr)
+                                continue
+                            
+                            response.raise_for_status()
+                            data = response.json()
+                            print(f"[DEBUG] RxNorm response: {data}", file=sys.stderr)
+                            
+                            # Parse the interaction response if it exists
+                            if data.get("fullInteractionTypeGroup"):
+                                for group in data["fullInteractionTypeGroup"]:
+                                    if group.get("fullInteractionType"):
+                                        for interaction_type in group["fullInteractionType"]:
+                                            if interaction_type.get("interactionPair"):
+                                                for pair in interaction_type["interactionPair"]:
+                                                    interaction_concept = pair.get("interactionConcept", [{}])
+                                                    description = pair.get("description", "No description available")
+                                                    severity = pair.get("severity", "unknown")
+                                                    
+                                                    # Extract drug names from the interaction concepts
+                                                    drugs = [concept.get("minConceptItem", {}).get("name", "Unknown") 
+                                                            for concept in interaction_concept if concept.get("minConceptItem")]
+                                                    
+                                                    if len(drugs) >= 2:
+                                                        interaction_obj = {
+                                                            "drug1": drugs[0],
+                                                            "drug2": drugs[1],
+                                                            "severity": severity,
+                                                            "description": description,
+                                                            "source": "RxNorm",
+                                                            "confidence": "high"
+                                                        }
+                                                        print(f"[DEBUG] Found interaction: {interaction_obj}", file=sys.stderr)
+                                                        interactions.append(interaction_obj)
+                                break  # Found working endpoint
+                                
+                        except requests.exceptions.RequestException as e:
+                            print(f"[DEBUG] RxNorm request error for {rxcui1}+{rxcui2}: {str(e)}", file=sys.stderr)
                             continue
-                        else:
-                            raise
             
+            print(f"[DEBUG] RxNorm total interactions found: {len(interactions)}", file=sys.stderr)
             return interactions
             
         except Exception as e:
-            print(f"Error getting RxNorm interactions: {str(e)}")
+            print(f"[DEBUG] Error in get_drug_interactions_rxnorm: {str(e)}", file=sys.stderr)
             return []
     
     def get_drug_interactions_drugbank(self, drug_names: List[str]) -> List[Dict]:
@@ -212,7 +223,7 @@ class DrugAPIClient:
     
     def get_fda_drug_info(self, drug_name: str) -> Optional[Dict]:
         """
-        Get drug information from FDA API.
+        Get drug information from FDA API including contraindications and warnings.
         
         Args:
             drug_name: Name of the drug
@@ -220,6 +231,7 @@ class DrugAPIClient:
         Returns:
             Dictionary with FDA drug information or None
         """
+        import sys
         try:
             # FDA Drug Labeling API
             url = f"{self.fda_base_url}/drug/label.json"
@@ -228,6 +240,7 @@ class DrugAPIClient:
                 "limit": 1
             }
             
+            print(f"[DEBUG] Querying FDA for drug info: {drug_name}", file=sys.stderr)
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
@@ -244,18 +257,31 @@ class DrugAPIClient:
                 generic_name_list = openfda.get("generic_name", [])
                 generic_name = generic_name_list[0] if generic_name_list else ""
                 
-                return {
+                # Extract key sections that contain interaction/contraindication info
+                contraindications = result.get("contraindications_and_usage", [])
+                warnings = result.get("warnings", [])
+                precautions = result.get("precautions", [])
+                drug_interactions_section = result.get("drug_interactions", [])
+                
+                fda_info = {
                     "drug_name": drug_name,
                     "brand_name": brand_name,
                     "generic_name": generic_name,
-                    "warnings": result.get("warnings", []),
+                    "warnings": warnings,
+                    "contraindications": contraindications,
+                    "precautions": precautions,
+                    "drug_interactions": drug_interactions_section,
                     "source": "FDA"
                 }
+                
+                print(f"[DEBUG] FDA info retrieved for {drug_name}: has warnings={len(warnings)}, interactions={len(drug_interactions_section)}", file=sys.stderr)
+                return fda_info
             
+            print(f"[DEBUG] No FDA results found for {drug_name}", file=sys.stderr)
             return None
             
         except Exception as e:
-            print(f"Error getting FDA info for {drug_name}: {str(e)}")
+            print(f"[DEBUG] Error getting FDA info for {drug_name}: {str(e)}", file=sys.stderr)
             return None
     
     def search_drug_websites(self, drug_name: str) -> List[Dict]:
