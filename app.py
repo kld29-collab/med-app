@@ -27,10 +27,26 @@ def get_agents():
     if query_interpreter is None:
         try:
             query_interpreter = QueryInterpreter()
-            retrieval_agent = RetrievalAgent()
-            explanation_agent = ExplanationAgent()
+        except ValueError as e:
+            print(f"[CRITICAL] Failed to initialize QueryInterpreter: {str(e)}")
+            raise
         except Exception as e:
-            print(f"Error initializing agents: {str(e)}")
+            print(f"[ERROR] Unexpected error initializing QueryInterpreter: {str(e)}")
+            raise
+        
+        try:
+            retrieval_agent = RetrievalAgent()
+        except Exception as e:
+            print(f"[ERROR] Failed to initialize RetrievalAgent: {str(e)}")
+            raise
+        
+        try:
+            explanation_agent = ExplanationAgent()
+        except ValueError as e:
+            print(f"[CRITICAL] Failed to initialize ExplanationAgent: {str(e)}")
+            raise
+        except Exception as e:
+            print(f"[ERROR] Unexpected error initializing ExplanationAgent: {str(e)}")
             raise
     
     return query_interpreter, retrieval_agent, explanation_agent
@@ -82,10 +98,32 @@ def handle_query():
         user_context = data.get('user_context') or get_default_user_context()
         
         # Initialize agents (lazy loading)
-        qi, ra, ea = get_agents()
+        try:
+            qi, ra, ea = get_agents()
+        except ValueError as e:
+            # Missing required API key
+            print(f"[CRITICAL] Agent initialization failed: {str(e)}")
+            return jsonify({
+                "error": "API Configuration Error",
+                "details": str(e),
+                "message": "The application is not properly configured. Please check that OPENAI_API_KEY is set."
+            }), 500
+        except Exception as e:
+            print(f"[ERROR] Unexpected error during agent initialization: {str(e)}")
+            return jsonify({
+                "error": "Server Error",
+                "details": str(e)
+            }), 500
         
         # Agent 1: Query Interpreter
-        query_plan = qi.interpret_query(user_query, user_context)
+        try:
+            query_plan = qi.interpret_query(user_query, user_context)
+        except Exception as e:
+            print(f"[ERROR] Query interpretation failed: {str(e)}")
+            return jsonify({
+                "error": "Failed to interpret your query",
+                "details": str(e)
+            }), 500
         
         if query_plan.get('error'):
             return jsonify({
@@ -94,16 +132,34 @@ def handle_query():
             }), 500
         
         # Agent 2: Retrieval Agent (Deterministic Layer)
-        interaction_data = ra.retrieve_interactions(query_plan)
+        try:
+            interaction_data = ra.retrieve_interactions(query_plan)
+        except Exception as e:
+            print(f"[ERROR] Retrieval failed: {str(e)}")
+            return jsonify({
+                "error": "Failed to retrieve interaction data",
+                "details": str(e)
+            }), 500
         
         # Agent 3: Explanation Agent
-        explanation = ea.generate_explanation(
-            interaction_data, 
-            user_context
-        )
+        try:
+            explanation = ea.generate_explanation(
+                interaction_data, 
+                user_context
+            )
+        except Exception as e:
+            print(f"[ERROR] Explanation generation failed: {str(e)}")
+            return jsonify({
+                "error": "Failed to generate explanation",
+                "details": str(e)
+            }), 500
         
         # Format explanation for display
-        formatted_explanation = ea.format_for_display(explanation)
+        try:
+            formatted_explanation = ea.format_for_display(explanation)
+        except Exception as e:
+            print(f"[ERROR] Formatting explanation failed: {str(e)}")
+            formatted_explanation = None
         
         return jsonify({
             "success": True,

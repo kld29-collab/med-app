@@ -88,6 +88,8 @@ async function handleSubmit(e) {
         // Get user context (from localStorage for Vercel compatibility)
         const context = getUserContext();
         
+        console.log('Sending query to /api/query:', { query, context });
+        
         // Send query to backend
         const response = await fetch('/api/query', {
             method: 'POST',
@@ -100,10 +102,14 @@ async function handleSubmit(e) {
             })
         });
         
+        console.log('Response status:', response.status);
+        
         const data = await response.json();
         
+        console.log('Response data:', data);
+        
         if (!response.ok) {
-            throw new Error(data.error || 'Failed to process query');
+            throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
         }
         
         // Display explanation
@@ -118,7 +124,7 @@ async function handleSubmit(e) {
         }
         
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error during query submission:', error);
         addMessage(`Error: ${error.message}. Please try again or consult your healthcare provider.`, 'bot', true);
     } finally {
         // Re-enable input
