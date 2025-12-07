@@ -1,45 +1,46 @@
 """
 Session management utilities for user context.
-Supports both server-side sessions (local dev) and client-side storage (Vercel serverless).
+Stateless implementation for Vercel serverless deployment.
+User context is stored client-side (localStorage) and sent with each request.
 """
-from flask import session
-from typing import Dict, Optional
+from typing import Dict
 
 
-def get_user_context() -> Dict:
+def get_default_user_context() -> Dict:
     """
-    Get user context from session or return empty dict.
-    For Vercel deployment, this will be supplemented by client-side localStorage.
+    Get default empty user context.
+    For Vercel serverless, user context comes from request payload (client-side localStorage).
     
     Returns:
-        Dictionary with user context (age, weight, height, medications, conditions)
+        Dictionary with default empty user context structure
     """
-    return session.get('user_context', {
+    return {
         'age': None,
         'weight': None,
         'height': None,
         'medications': [],
         'conditions': []
-    })
+    }
 
 
-def update_user_context(updates: Dict) -> Dict:
+def merge_user_context(existing: Dict = None, updates: Dict = None) -> Dict:
     """
-    Update user context in session.
+    Merge user context updates with existing context.
+    This is a stateless operation - no server-side storage.
     
     Args:
+        existing: Existing user context (from request)
         updates: Dictionary with fields to update
     
     Returns:
-        Updated user context
+        Merged user context
     """
-    context = get_user_context()
+    if existing is None:
+        existing = get_default_user_context()
+    if updates is None:
+        updates = {}
+    
+    context = existing.copy()
     context.update(updates)
-    session['user_context'] = context
     return context
-
-
-def clear_user_context():
-    """Clear user context from session."""
-    session.pop('user_context', None)
 

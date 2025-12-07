@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="app-layout">
+    <!-- User Profile Sidebar -->
+    <aside class="profile-sidebar" id="profileSidebar">
+        <div class="sidebar-header">
+            <h2>Your Profile</h2>
+            <button class="toggle-sidebar" id="toggleSidebar">×</button>
+        </div>
+        
+        <div class="profile-form">
+            <div class="form-group">
+                <label for="age">Age:</label>
+                <input type="number" id="age" min="0" max="150" placeholder="Enter age">
+            </div>
+            
+            <div class="form-group">
+                <label for="weight">Weight (kg):</label>
+                <input type="number" id="weight" min="0" step="0.1" placeholder="Enter weight">
+            </div>
+            
+            <div class="form-group">
+                <label for="height">Height (cm):</label>
+                <input type="number" id="height" min="0" step="0.1" placeholder="Enter height">
+            </div>
+            
+            <div class="form-group">
+                <label for="medications">Current Medications (one per line):</label>
+                <textarea id="medications" rows="5" placeholder="e.g., Aspirin&#10;Lisinopril&#10;Metformin"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="conditions">Health Conditions (one per line):</label>
+                <textarea id="conditions" rows="3" placeholder="e.g., Hypertension&#10;Diabetes"></textarea>
+            </div>
+            
+            <div class="form-actions">
+                <button class="btn btn-primary" id="saveProfile">Save Profile</button>
+                <button class="btn btn-secondary" id="clearProfile">Clear</button>
+            </div>
+            
+            <div class="profile-status" id="profileStatus"></div>
+        </div>
+    </aside>
+    
+    <!-- Main Chat Interface -->
+    <div class="chat-container">
+        <div class="chat-header">
+            <button class="btn btn-icon" id="openSidebar">☰ Profile</button>
+            <h2>Ask About Medication Interactions</h2>
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot-message">
+                <div class="message-content">
+                    <p>Hello! I can help you check for potential interactions between medications, foods, and supplements. Ask me questions like:</p>
+                    <ul>
+                        <li>"Can I take Tylenol with my antidepressant?"</li>
+                        <li>"Does grapefruit juice affect my medication?"</li>
+                        <li>"Are there interactions between Aspirin and Ibuprofen?"</li>
+                    </ul>
+                    <p>You can also set up your profile in the sidebar to provide context for more personalized answers.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-input-container">
+            <form id="chatForm" class="chat-form">
+                <textarea 
+                    id="userInput" 
+                    placeholder="Ask about medication interactions..." 
+                    rows="2"
+                    maxlength="500"
+                ></textarea>
+                <button type="submit" class="btn btn-primary" id="sendButton">
+                    Send
+                </button>
+            </form>
+            <div class="input-footer">
+                <span class="char-count"><span id="charCount">0</span>/500</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay" style="display: none;">
+    <div class="loading-spinner"></div>
+    <p>Analyzing your query...</p>
+</div>
+{% endblock %}
+

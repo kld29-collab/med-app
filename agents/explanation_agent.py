@@ -158,8 +158,13 @@ class ExplanationAgent:
         if explanation.get("interactions"):
             lines.append("**Interactions:**\n")
             for i, interaction in enumerate(explanation["interactions"], 1):
-                items = " and ".join(interaction.get("items", []))
-                lines.append(f"{i}. **{items}** ({interaction.get('type', 'unknown')})")
+                # Safely join items: filter out None, convert to strings, handle empty lists
+                items_list = interaction.get("items", [])
+                items_str = " and ".join(
+                    str(item) for item in items_list 
+                    if item is not None
+                ) if items_list else "Unknown items"
+                lines.append(f"{i}. **{items_str}** ({interaction.get('type', 'unknown')})")
                 lines.append(f"   {interaction.get('explanation', 'No explanation available')}")
                 if interaction.get("severity"):
                     lines.append(f"   Severity: {interaction['severity']}")

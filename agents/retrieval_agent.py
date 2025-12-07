@@ -56,9 +56,11 @@ class RetrievalAgent:
             results["metadata"]["sources_queried"].append("RxNorm")
             
             # Extract normalized names for further queries
+            # Filter out empty strings and ensure we have valid medication names
             normalized_names = [
-                med.get("normalized_name") or med.get("original_name", "")
+                med.get("normalized_name") or med.get("original_name")
                 for med in normalized
+                if (med.get("normalized_name") or med.get("original_name"))
             ]
             
             # Step 2: Get drug-drug interactions from DrugBank
@@ -68,6 +70,7 @@ class RetrievalAgent:
                 results["metadata"]["sources_queried"].append("DrugBank")
             
             # Step 3: Get FDA information for each medication
+            fda_queried = False
             for med_name in medications:
                 fda_info = self.api_client.get_fda_drug_info(med_name)
                 if fda_info:
@@ -77,34 +80,48 @@ class RetrievalAgent:
                         "drug": med_name,
                         "url": f"https://www.fda.gov/drugs"
                     })
+                    fda_queried = True
+            
+            if fda_queried:
+                results["metadata"]["sources_queried"].append("FDA")
             
             # Step 4: Web RAG search for additional context
+            web_queried = False
             for med_name in medications:
                 web_results = self.api_client.search_drug_websites(med_name)
-                results["web_sources"].extend(web_results)
+                if web_results:
+                    results["web_sources"].extend(web_results)
+                    web_queried = True
+            
+            if web_queried:
+                results["metadata"]["sources_queried"].append("Web")
         
         # Step 5: Handle food interactions
         if foods:
             # Food interactions would be queried similarly
             # This is a placeholder - actual implementation depends on available APIs
             for food in foods:
-                results["food_interactions"].append({
-                    "food": food,
-                    "interactions": [],
-                    "source": "database",
-                    "note": "Food interaction data would be retrieved here"
-                })
+                # Only add if food name is valid (not None or empty)
+                if food and food.strip():
+                    results["food_interactions"].append({
+                        "food": food.strip(),
+                        "interactions": [],
+                        "source": "database",
+                        "note": "Food interaction data would be retrieved here"
+                    })
         
         # Step 6: Handle supplement interactions
         if supplements:
             # Supplement interactions would be queried similarly
             for supplement in supplements:
-                results["supplement_interactions"].append({
-                    "supplement": supplement,
-                    "interactions": [],
-                    "source": "database",
-                    "note": "Supplement interaction data would be retrieved here"
-                })
+                # Only add if supplement name is valid (not None or empty)
+                if supplement and supplement.strip():
+                    results["supplement_interactions"].append({
+                        "supplement": supplement.strip(),
+                        "interactions": [],
+                        "source": "database",
+                        "note": "Supplement interaction data would be retrieved here"
+                    })
         
         # Build interaction table
         interaction_table = self._build_interaction_table(results)
@@ -126,41 +143,55 @@ class RetrievalAgent:
         
         # Add drug-drug interactions
         for interaction in results.get("drug_interactions", []):
-            table.append({
-                "type": "drug-drug",
-                "item1": interaction.get("drug1"),
-                "item2": interaction.get("drug2"),
-                "severity": interaction.get("severity", "unknown"),
-                "description": interaction.get("description", ""),
-                "source": interaction.get("source", ""),
-                "confidence": interaction.get("confidence", "medium")
-            })
+            drug1 = interaction.get("drug1")
+            drug2 = interaction.get("drug2")
+            # Only add if both drugs have valid names (not empty or None)
+            if drug1 and drug2:
+                table.append({
+                    "type": "drug-drug",
+                    "item1": drug1,
+                    "item2": drug2,
+                    "severity": interaction.get("severity", "unknown"),
+                    "description": interaction.get("description", ""),
+                    "source": interaction.get("source", ""),
+                    "confidence": interaction.get("confidence", "medium")
+                })
         
         # Add food interactions
         for interaction in results.get("food_interactions", []):
-            for med in results.get("normalized_medications", []):
-                table.append({
-                    "type": "drug-food",
-                    "item1": med.get("normalized_name"),
-                    "item2": interaction.get("food"),
-                    "severity": "unknown",
-                    "description": interaction.get("note", ""),
-                    "source": interaction.get("source", ""),
-                    "confidence": "low"
-                })
+            food_name = interaction.get("food")
+            # Validate both medication and food names before adding
+            if food_name:  # Only proceed if we have a valid food name
+                for med in results.get("normalized_medications", []):
+                    med_name = med.get("normalized_name") or med.get("original_name")
+                    if med_name:  # Only add if we have a valid medication name
+                        table.append({
+                            "type": "drug-food",
+                            "item1": med_name,
+                            "item2": food_name,
+                            "severity": "unknown",
+                            "description": interaction.get("note", ""),
+                            "source": interaction.get("source", ""),
+                            "confidence": "low"
+                        })
         
         # Add supplement interactions
         for interaction in results.get("supplement_interactions", []):
-            for med in results.get("normalized_medications", []):
-                table.append({
-                    "type": "drug-supplement",
-                    "item1": med.get("normalized_name"),
-                    "item2": interaction.get("supplement"),
-                    "severity": "unknown",
-                    "description": interaction.get("note", ""),
-                    "source": interaction.get("source", ""),
-                    "confidence": "low"
-                })
+            supplement_name = interaction.get("supplement")
+            # Validate both medication and supplement names before adding
+            if supplement_name:  # Only proceed if we have a valid supplement name
+                for med in results.get("normalized_medications", []):
+                    med_name = med.get("normalized_name") or med.get("original_name")
+                    if med_name:  # Only add if we have a valid medication name
+                        table.append({
+                            "type": "drug-supplement",
+                            "item1": med_name,
+                            "item2": supplement_name,
+                            "severity": "unknown",
+                            "description": interaction.get("note", ""),
+                            "source": interaction.get("source", ""),
+                            "confidence": "low"
+                        })
         
         return table
 

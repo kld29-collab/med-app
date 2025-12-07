@@ -72,8 +72,10 @@ class QueryInterpreter:
             result = json.loads(response.choices[0].message.content)
             
             # Merge with existing user context
+            # User's persistent profile (from localStorage) takes precedence over LLM-extracted context
             if user_context:
-                result["user_context"] = {**user_context, **result.get("user_context", {})}
+                # LLM-extracted context first, then user's saved profile overrides it
+                result["user_context"] = {**result.get("user_context", {}), **user_context}
             
             return result
             

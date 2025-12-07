@@ -48,10 +48,13 @@ class DrugAPIClient:
             
             if data.get("result") and data["result"].get("results"):
                 result = data["result"]["results"][0]
+                # Get normalized name, fallback to original drug_name if not available
+                normalized_name = result.get("name") or drug_name
                 return {
                     "rxcui": result.get("ui"),
                     "name": result.get("name"),
-                    "normalized_name": result.get("name"),
+                    "original_name": drug_name,  # Always preserve original name
+                    "normalized_name": normalized_name,
                     "source": "RxNorm"
                 }
             
@@ -126,10 +129,20 @@ class DrugAPIClient:
             
             if data.get("results") and len(data["results"]) > 0:
                 result = data["results"][0]
+                openfda = result.get("openfda", {})
+                
+                # Safely extract brand_name - handle empty lists
+                brand_name_list = openfda.get("brand_name", [])
+                brand_name = brand_name_list[0] if brand_name_list else drug_name
+                
+                # Safely extract generic_name - handle empty lists
+                generic_name_list = openfda.get("generic_name", [])
+                generic_name = generic_name_list[0] if generic_name_list else ""
+                
                 return {
                     "drug_name": drug_name,
-                    "brand_name": result.get("openfda", {}).get("brand_name", [drug_name])[0],
-                    "generic_name": result.get("openfda", {}).get("generic_name", [""])[0],
+                    "brand_name": brand_name,
+                    "generic_name": generic_name,
                     "warnings": result.get("warnings", []),
                     "source": "FDA"
                 }

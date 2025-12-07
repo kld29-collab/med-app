@@ -1,11 +1,12 @@
 """
 Main Flask application for Medication Interaction Tracker.
+Stateless implementation for Vercel serverless deployment.
 """
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify
 from agents.query_interpreter import QueryInterpreter
 from agents.retrieval_agent import RetrievalAgent
 from agents.explanation_agent import ExplanationAgent
-from utils.session_manager import get_user_context, update_user_context
+from utils.session_manager import get_default_user_context, merge_user_context
 from utils.validators import validate_user_query, validate_user_context
 from config import Config
 import json
@@ -33,7 +34,7 @@ def handle_query():
     Expected JSON:
     {
         "query": "user's natural language question",
-        "user_context": {...}  # optional, can also come from session
+        "user_context": {...}  # sent from client-side localStorage
     }
     """
     try:
@@ -49,8 +50,9 @@ def handle_query():
         if not is_valid:
             return jsonify({"error": error_msg}), 400
         
-        # Get user context (from request or session)
-        user_context = data.get('user_context') or get_user_context()
+        # Get user context from request (client-side localStorage)
+        # Default to empty context if not provided
+        user_context = data.get('user_context') or get_default_user_context()
         
         # Agent 1: Query Interpreter
         query_plan = query_interpreter.interpret_query(user_query, user_context)
@@ -93,14 +95,16 @@ def handle_profile():
     """
     Get or update user profile/context.
     
-    GET: Returns current user context
-    POST: Updates user context
+    GET: Returns default empty context structure (client should use localStorage)
+    POST: Validates and returns merged context (client stores in localStorage)
         Expected JSON: {"age": ..., "weight": ..., "height": ..., "medications": [...], "conditions": [...]}
     """
     if request.method == 'GET':
+        # Return default structure - actual context comes from client localStorage
         return jsonify({
             "success": True,
-            "user_context": get_user_context()
+            "user_context": get_default_user_context(),
+            "message": "Use client-side localStorage for persistent storage"
         })
     
     elif request.method == 'POST':
@@ -115,30 +119,33 @@ def handle_profile():
             if not is_valid:
                 return jsonify({"error": error_msg}), 400
             
-            # Update context
-            updated_context = update_user_context(data)
+            # Merge with defaults and return (client stores in localStorage)
+            # This is stateless - we don't store on server
+            updated_context = merge_user_context(updates=data)
             
             return jsonify({
                 "success": True,
                 "user_context": updated_context,
-                "message": "Profile updated successfully"
+                "message": "Profile validated successfully. Store in localStorage on client."
             })
             
         except Exception as e:
             return jsonify({
-                "error": "Failed to update profile",
+                "error": "Failed to validate profile",
                 "details": str(e)
             }), 500
 
 
 @app.route('/api/clear-profile', methods=['POST'])
 def clear_profile():
-    """Clear user profile/context."""
-    from utils.session_manager import clear_user_context
-    clear_user_context()
+    """
+    Clear user profile/context.
+    Returns default empty context - client should clear localStorage.
+    """
     return jsonify({
         "success": True,
-        "message": "Profile cleared"
+        "user_context": get_default_user_context(),
+        "message": "Profile cleared. Clear localStorage on client."
     })
 
 
