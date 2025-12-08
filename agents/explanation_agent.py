@@ -83,6 +83,8 @@ class ExplanationAgent:
         citations = interaction_data.get("citations", [])
         web_sources = interaction_data.get("web_sources", [])
         fda_info = interaction_data.get("fda_info", [])
+        food_interactions = interaction_data.get("food_interactions", [])
+        query_focus = interaction_data.get("metadata", {}).get("query_focus", "general")
         
         system_prompt = """You are a medical information translator. Your job is to take technical 
         medication interaction data and explain it in plain, everyday language that non-medical users 
@@ -96,6 +98,11 @@ class ExplanationAgent:
         5. Include appropriate safety disclaimers
         6. Flag any uncertainties or low-confidence data
         7. Explain WHY an interaction might occur if that information is available
+        8. RESPECT QUERY FOCUS: Only explain interactions relevant to what the user asked about
+           - If query_focus is "food": ONLY explain food/beverage interactions, ignore medications
+           - If query_focus is "drug_drug": ONLY explain medication-medication interactions
+           - If query_focus is "supplement": ONLY explain supplement interactions
+           - If query_focus is "general": Explain all relevant interactions found
         
         SEVERITY ASSESSMENT:
         When assigning severity, use these guidelines:
@@ -126,11 +133,17 @@ class ExplanationAgent:
         
         user_prompt = f"""Here is the interaction data retrieved from medical databases:
 
+        Query Focus: {query_focus}
+        (This tells you what the user was specifically asking about - only explain relevant interactions)
+
         Normalized Medications:
         {json.dumps(normalized_medications, indent=2)}
 
-        Interaction Table:
-        {json.dumps(interaction_table, indent=2)}
+        Drug Interactions:
+        {json.dumps(interaction_table, indent=2) if interaction_table else "None found"}
+
+        Food Interactions (for each medication):
+        {json.dumps(food_interactions, indent=2) if food_interactions else "None found"}
 
         FDA Information:
         {json.dumps(fda_info, indent=2) if fda_info else "None"}
@@ -146,14 +159,19 @@ class ExplanationAgent:
 
         Generate a plain-language explanation based on this data. 
         
-        PRIORITY LOGIC:
-        - If interaction table has data: Use it as primary source, supplement with web results and FDA info
-        - If interaction table is empty BUT web search results exist: Use web results as primary source for interaction information
-        - If both are empty: State that no specific interactions were found in available databases
+        CRITICAL: Respect the query_focus field above.
+        - If query_focus="food": Only explain food/beverage interactions from the Food Interactions list
+        - If query_focus="drug_drug": Only explain drug-drug interactions from the Drug Interactions list
+        - If query_focus="supplement": Only explain supplement interactions from Food Interactions marked as supplements
+        - If query_focus="general": Explain all interactions found
         
-        Always synthesize multiple sources when available. Do not invent interactions that are not in the data, 
-        but DO use web search results to provide context about drug combinations that the standard databases 
-        don't have indexed interactions for."""
+        Do NOT generate explanations for interaction types that don't match the query focus.
+        
+        PRIORITY LOGIC:
+        - Use data from the appropriate interaction type based on query_focus
+        - Always use the actual interaction data provided (don't speculate)
+        - Synthesize multiple sources when available
+        - Include all relevant interactions found for the query_focus"""
         
         try:
             response = self.client.chat.completions.create(
