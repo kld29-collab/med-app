@@ -285,30 +285,112 @@ function createSourcesPanel(explanationData) {
         sourceDesc.textContent = source.description;
         sourceItem.appendChild(sourceDesc);
         
-        // Add source-specific details
+        // Add source-specific details with actual information
         if (source.type === 'drug-interactions' && explanationData.raw_sources?.drugbank) {
-            const drugbankItems = explanationData.raw_sources.drugbank.slice(0, 3);
+            const drugbankItems = explanationData.raw_sources.drugbank.slice(0, 5);
             if (drugbankItems.length > 0) {
-                const details = document.createElement('ul');
+                const details = document.createElement('div');
                 details.className = 'source-details';
                 drugbankItems.forEach(item => {
-                    const li = document.createElement('li');
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'detail-item';
+                    
+                    const drugs = document.createElement('div');
+                    drugs.className = 'detail-drugs';
                     const drug1 = item.drug1_id || 'Unknown';
                     const drug2 = item.drug2_name || 'Unknown';
-                    li.textContent = `${drug1} ↔ ${drug2}`;
-                    details.appendChild(li);
+                    drugs.innerHTML = `<strong>${escapeHtml(drug1)}</strong> ↔ <strong>${escapeHtml(drug2)}</strong>`;
+                    itemDiv.appendChild(drugs);
+                    
+                    if (item.description) {
+                        const desc = document.createElement('div');
+                        desc.className = 'detail-description';
+                        desc.textContent = item.description.substring(0, 100);
+                        if (item.description.length > 100) desc.textContent += '...';
+                        itemDiv.appendChild(desc);
+                    }
+                    
+                    details.appendChild(itemDiv);
                 });
                 sourceItem.appendChild(details);
             }
         } else if (source.type === 'drug-labels' && explanationData.raw_sources?.fda) {
-            const fdaItems = explanationData.raw_sources.fda.slice(0, 3);
+            const fdaItems = explanationData.raw_sources.fda.slice(0, 5);
             if (fdaItems.length > 0) {
-                const details = document.createElement('ul');
+                const details = document.createElement('div');
                 details.className = 'source-details';
                 fdaItems.forEach(item => {
-                    const li = document.createElement('li');
-                    li.textContent = item.drug_name || 'Unknown';
-                    details.appendChild(li);
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'detail-item';
+                    
+                    const drugName = document.createElement('div');
+                    drugName.className = 'detail-drugs';
+                    drugName.innerHTML = `<strong>${escapeHtml(item.drug_name || 'Unknown')}</strong>`;
+                    itemDiv.appendChild(drugName);
+                    
+                    // Show FDA warnings if available
+                    if (item.warnings && item.warnings.length > 0) {
+                        const warning = document.createElement('div');
+                        warning.className = 'detail-warning';
+                        warning.textContent = '⚠️ ' + item.warnings[0].substring(0, 80);
+                        if (item.warnings[0].length > 80) warning.textContent += '...';
+                        itemDiv.appendChild(warning);
+                    } else if (item.precautions && item.precautions.length > 0) {
+                        const precaution = document.createElement('div');
+                        precaution.className = 'detail-precaution';
+                        precaution.textContent = item.precautions[0].substring(0, 80);
+                        if (item.precautions[0].length > 80) precaution.textContent += '...';
+                        itemDiv.appendChild(precaution);
+                    }
+                    
+                    details.appendChild(itemDiv);
+                });
+                sourceItem.appendChild(details);
+            }
+        } else if (source.type === 'web-results' && explanationData.raw_sources?.web) {
+            const webItems = explanationData.raw_sources.web.slice(0, 5);
+            if (webItems.length > 0) {
+                const details = document.createElement('div');
+                details.className = 'source-details';
+                webItems.forEach(item => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'detail-item detail-web';
+                    
+                    if (item.title) {
+                        const title = document.createElement('div');
+                        title.className = 'detail-title';
+                        title.textContent = item.title.substring(0, 70);
+                        if (item.title.length > 70) title.textContent += '...';
+                        itemDiv.appendChild(title);
+                    }
+                    
+                    if (item.snippet) {
+                        const snippet = document.createElement('div');
+                        snippet.className = 'detail-snippet';
+                        snippet.textContent = item.snippet.substring(0, 100);
+                        if (item.snippet.length > 100) snippet.textContent += '...';
+                        itemDiv.appendChild(snippet);
+                    }
+                    
+                    details.appendChild(itemDiv);
+                });
+                sourceItem.appendChild(details);
+            }
+        } else if (source.type === 'citations' && explanationData.raw_sources?.citations) {
+            const citationItems = explanationData.raw_sources.citations.slice(0, 5);
+            if (citationItems.length > 0) {
+                const details = document.createElement('div');
+                details.className = 'source-details';
+                citationItems.forEach(item => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'detail-item detail-citation';
+                    
+                    const citationText = document.createElement('div');
+                    citationText.className = 'detail-citation-text';
+                    citationText.textContent = (typeof item === 'string' ? item : item.text || JSON.stringify(item)).substring(0, 100);
+                    itemDiv.appendChild(citationText);
+                    
+                    details.appendChild(itemDiv);
                 });
                 sourceItem.appendChild(details);
             }
