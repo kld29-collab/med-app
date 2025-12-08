@@ -33,6 +33,7 @@ class CacheManager:
         
         Args:
             cache_dir: Directory for persistent cache files (optional)
+                      Gracefully falls back to in-memory only on read-only filesystems
         """
         self.cache_dir = cache_dir
         self.in_memory_cache = {}  # Fast in-memory storage
@@ -50,9 +51,17 @@ class CacheManager:
         self.DRUG_TTL = 7 * 24 * 60 * 60  # 7 days - drug lookups
         self.INTERACTION_TTL = 7 * 24 * 60 * 60  # 7 days - interaction pairs
         
-        # Create cache directory if using persistent storage
+        # Try to create cache directory for persistent storage
+        # On Vercel (read-only filesystem) this will fail gracefully and use in-memory only
         if cache_dir and not os.path.exists(cache_dir):
-            os.makedirs(cache_dir)
+            try:
+                os.makedirs(cache_dir)
+                self.persistent_cache_available = True
+            except OSError as e:
+                # Read-only filesystem (e.g., Vercel serverless)
+                # Fall back to in-memory only
+                self.persistent_cache_available = False
+                print(f"[CACHE] Persistent storage unavailable ({e}), using in-memory cache only")
     
     def _hash_query(self, query: str) -> str:
         """Create deterministic hash of query for cache key."""
