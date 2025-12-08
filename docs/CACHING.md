@@ -1,8 +1,27 @@
 # Caching System Documentation
 
+## Quick Start (TL;DR)
+
+The caching system works **automatically behind the scenes** - zero configuration needed!
+
+✅ **Speed:** Repeated queries return in <10ms (was 6-15 seconds)  
+✅ **Cost:** 50-70% fewer OpenAI API calls  
+✅ **Automatic:** Zero configuration needed  
+
+Just use the app normally:
+```bash
+# Frontend - No changes needed
+# Backend - Caching is automatic via app.py
+
+# Monitor performance:
+curl http://localhost:5000/api/cache-stats
+```
+
+---
+
 ## Overview
 
-The Med App now includes an **intelligent three-level caching system** that dramatically reduces API costs and improves response time.
+The Med App includes an **intelligent three-level caching system** that dramatically reduces API costs and improves response time.
 
 ### Key Results
 - **Cost Reduction**: ~50-70% fewer OpenAI API calls

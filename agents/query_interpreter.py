@@ -3,16 +3,12 @@ Agent 1: Query Interpreter
 Extracts structured information from natural language queries about medications.
 """
 import json
-import os
 import sys
-from openai import OpenAI
 from config import Config
+from utils.openai_client import initialize_openai_client, cleanup_environment
 
-# Disable environment variable auto-detection that might cause issues
-os.environ.pop('HTTP_PROXY', None)
-os.environ.pop('HTTPS_PROXY', None)
-os.environ.pop('http_proxy', None)
-os.environ.pop('https_proxy', None)
+# Cleanup environment on module load
+cleanup_environment()
 
 
 class QueryInterpreter:
@@ -21,39 +17,7 @@ class QueryInterpreter:
     def __init__(self):
         """Initialize the query interpreter with OpenAI client."""
         print(f"[DEBUG] Python version: {sys.version}", file=sys.stderr)
-        
-        if not Config.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY is not configured. Please set it in your environment variables.")
-        
-        try:
-            print(f"[DEBUG] Initializing OpenAI client...", file=sys.stderr)
-            # Initialize OpenAI client - try with minimal config first
-            import httpx
-            
-            # Create a custom HTTP client without proxy
-            http_client = httpx.Client(
-                timeout=30.0,
-                verify=True,
-                proxies=None  # Explicitly set to None
-            )
-            
-            self.client = OpenAI(
-                api_key=Config.OPENAI_API_KEY,
-                http_client=http_client
-            )
-            print(f"[DEBUG] OpenAI client initialized successfully with custom http_client", file=sys.stderr)
-        except Exception as e:
-            print(f"[ERROR] Failed with custom http_client, trying basic init: {str(e)}", file=sys.stderr)
-            try:
-                # Fallback: try without http_client parameter
-                self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
-                print(f"[DEBUG] OpenAI client initialized successfully with basic init", file=sys.stderr)
-            except Exception as e2:
-                print(f"[ERROR] Basic init also failed: {str(e2)}", file=sys.stderr)
-                import traceback
-                traceback.print_exc(file=sys.stderr)
-                raise ValueError(f"Failed to initialize OpenAI client: {str(e2)}")
-        
+        self.client = initialize_openai_client("QueryInterpreter")
         self.model = Config.OPENAI_MODEL
     
     def interpret_query(self, user_query: str, user_context: dict = None) -> dict:

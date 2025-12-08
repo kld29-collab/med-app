@@ -9,17 +9,13 @@ Data sources summarized in explanations:
 - DrugBank (optional): Professional drug interaction database (paid)
 """
 import json
-import os
 import sys
-from openai import OpenAI
-from config import Config
 from typing import Dict, List
+from config import Config
+from utils.openai_client import initialize_openai_client, cleanup_environment
 
-# Disable environment variable auto-detection that might cause issues
-os.environ.pop('HTTP_PROXY', None)
-os.environ.pop('HTTPS_PROXY', None)
-os.environ.pop('http_proxy', None)
-os.environ.pop('https_proxy', None)
+# Cleanup environment on module load
+cleanup_environment()
 
 
 class ExplanationAgent:
@@ -28,39 +24,7 @@ class ExplanationAgent:
     def __init__(self):
         """Initialize the explanation agent with OpenAI client."""
         print(f"[DEBUG] Initializing ExplanationAgent...", file=sys.stderr)
-        
-        if not Config.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY is not configured. Please set it in your environment variables.")
-        
-        try:
-            print(f"[DEBUG] Initializing OpenAI client in ExplanationAgent...", file=sys.stderr)
-            # Initialize OpenAI client - try with minimal config first
-            import httpx
-            
-            # Create a custom HTTP client without proxy
-            http_client = httpx.Client(
-                timeout=30.0,
-                verify=True,
-                proxies=None  # Explicitly set to None
-            )
-            
-            self.client = OpenAI(
-                api_key=Config.OPENAI_API_KEY,
-                http_client=http_client
-            )
-            print(f"[DEBUG] OpenAI client in ExplanationAgent initialized successfully with custom http_client", file=sys.stderr)
-        except Exception as e:
-            print(f"[ERROR] Failed with custom http_client, trying basic init: {str(e)}", file=sys.stderr)
-            try:
-                # Fallback: try without http_client parameter
-                self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
-                print(f"[DEBUG] OpenAI client in ExplanationAgent initialized successfully with basic init", file=sys.stderr)
-            except Exception as e2:
-                print(f"[ERROR] Basic init also failed: {str(e2)}", file=sys.stderr)
-                import traceback
-                traceback.print_exc(file=sys.stderr)
-                raise ValueError(f"Failed to initialize OpenAI client: {str(e2)}")
-        
+        self.client = initialize_openai_client("ExplanationAgent")
         self.model = Config.OPENAI_MODEL
     
     def generate_explanation(self, interaction_data: Dict, user_context: Dict = None) -> Dict:
@@ -87,7 +51,6 @@ class ExplanationAgent:
         query_focus = interaction_data.get("metadata", {}).get("query_focus", "general")
         
         # DEBUG: Log what we received
-        import sys
         print(f"[DEBUG EXPLANATION] Query focus: {query_focus}", file=sys.stderr)
         print(f"[DEBUG EXPLANATION] Food interactions count: {len(food_interactions)}", file=sys.stderr)
         print(f"[DEBUG EXPLANATION] Drug interactions count: {len(interaction_table)}", file=sys.stderr)
