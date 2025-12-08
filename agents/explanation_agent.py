@@ -100,21 +100,27 @@ class ExplanationAgent:
         CRITICAL RULES (FOLLOW THESE EXACTLY):
         1. ONLY explain the data provided - do not make up information
         2. If food interactions data is provided AND query_focus="food": MUST explain the food interactions
-        3. Do NOT say "no interactions found" if the data list has items in it
+        3. Do NOT say "no interactions found" or "specific details were not provided" if you have interaction text/data
         4. If the user asked about food (query_focus="food"): explain EVERY food interaction in the list
         5. Use simple, clear language - avoid medical jargon
         6. Always recommend consulting a healthcare provider
+        7. Extract severity from the description text:
+           - Look for keywords like "bleeding risk", "increase INR", "serious", "life-threatening" = HIGH
+           - Look for keywords like "interfere with", "reduce efficacy", "increase levels" = MODERATE
+           - Look for keywords like "may affect", "possible" = MILD
+           - If severity is unclear, use "unknown"
+        8. Each food interaction description contains the details - USE THEM in the explanation
         
         RESPONSE FORMAT: Return ONLY valid JSON in this exact structure:
         {
             "summary": "Brief 2-3 sentence summary of findings",
             "interactions": [
                 {
-                    "items": ["item1", "item2"],
+                    "items": ["food item name"],
                     "type": "food-drug",
-                    "explanation": "Plain language explanation",
+                    "explanation": "What the interaction is based on the provided description",
                     "severity": "high/moderate/mild/unknown",
-                    "recommendation": "What to do about this"
+                    "recommendation": "What to do about this based on the provided description"
                 }
             ],
             "uncertainties": ["any uncertain or low-confidence information"],
@@ -122,7 +128,21 @@ class ExplanationAgent:
             "recommendation": "Overall recommendation"
         }
         
-        DO NOT DEVIATE FROM THIS FORMAT."""
+        DO NOT DEVIATE FROM THIS FORMAT. Every description already contains the interaction details."""
+        
+        # Build food interactions display with better formatting
+        food_interactions_display = ""
+        for i, interaction in enumerate(food_interactions, 1):
+            # Handle both string and dict formats
+            if isinstance(interaction, dict):
+                food_name = interaction.get("food", "Unknown food")
+                if isinstance(food_name, str):
+                    description = food_name
+                else:
+                    description = str(food_name)
+            else:
+                description = str(interaction)
+            food_interactions_display += f"\n{i}. {description}"
         
         user_prompt = f"""INTERACTION DATA TO EXPLAIN:
 
@@ -130,8 +150,7 @@ User's Query Focus: {query_focus}
 
 Medications: {json.dumps(normalized_medications, indent=2)}
 
-FOOD/BEVERAGE INTERACTIONS ({len(food_interactions)} items found):
-{json.dumps(food_interactions, indent=2)}
+FOOD/BEVERAGE INTERACTIONS ({len(food_interactions)} items found):{food_interactions_display}
 
 DRUG-DRUG INTERACTIONS ({len(interaction_table)} items found):
 {json.dumps(interaction_table, indent=2) if interaction_table else "(empty)"}
@@ -144,13 +163,16 @@ Web Search Results:
 
 YOUR TASK:
 1. Query focus is: {query_focus}
-2. This means explain ONLY: {"FOOD/BEVERAGE interactions" if query_focus == "food" else "DRUG-DRUG interactions" if query_focus == "drug_drug" else "all interactions"}
-3. You have {len(food_interactions)} food interactions to explain
-4. You have {len(interaction_table)} drug interactions to explain
-5. Create a JSON response explaining the relevant interactions based on query_focus
+2. Focus on: {"FOOD/BEVERAGE interactions ONLY" if query_focus == "food" else "DRUG-DRUG interactions ONLY" if query_focus == "drug_drug" else "all interactions"}
+3. You have {len(food_interactions)} food interactions provided above
+4. You have {len(interaction_table)} drug interactions to include if relevant
+5. For each food interaction, extract:
+   - Food/beverage name
+   - What the description says about the interaction
+   - Severity based on keywords (bleeding risk = HIGH, interfere with metabolism = MODERATE, etc)
+   - Recommendation from the description
 
-IMPORTANT: If query_focus="food" and food interactions list has 7 items, 
-then you MUST create 7 interaction objects in your response (one for each food interaction)."""
+IMPORTANT: The interaction descriptions already contain all the details you need. Do NOT say "specific details were not provided" - they are provided in the descriptions above. Create one interaction object for each of the {len(food_interactions)} food interactions listed."""
         
         try:
             response = self.client.chat.completions.create(
