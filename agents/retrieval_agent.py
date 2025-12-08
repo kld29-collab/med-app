@@ -3,12 +3,13 @@ Agent 2: Retrieval/Database Agent (Deterministic Layer)
 Executes queries against medication databases and returns structured interaction data.
 NO LLM involvement - pure deterministic data retrieval.
 
-Data Sources:
-1. RxNorm API - Drug name normalization and RxCUI identifier resolution ONLY
+Data Sources (Priority Order):
+1. DrugBank Database (RAG) - Comprehensive drug interactions from DrugBank Download account
+   (17,430+ drugs with complete interaction data, fast local SQLite queries)
+2. RxNorm API - Drug name normalization and RxCUI identifier resolution ONLY
    (RxNorm's interaction endpoints have been deprecated and are no longer available)
-2. FDA Drug Labeling API (OpenFDA) - Contraindications, warnings, precautions, and documented interactions
-3. Web Search (SerpAPI) - Current interaction information and clinical evidence
-4. DrugBank API (optional, requires paid subscription) - Professional drug interaction database
+3. FDA Drug Labeling API (OpenFDA) - Contraindications, warnings, precautions, and documented interactions
+4. Web Search (SerpAPI) - Current interaction information and clinical evidence as supplement
 """
 from typing import List, Dict, Optional
 from utils.drug_apis import DrugAPIClient, normalize_medications
@@ -81,11 +82,36 @@ class RetrievalAgent:
                 if med.get("rxcui")
             ]
             
-            # Step 2: Get FDA drug information (includes warnings, contraindications, and documented interactions)
-            # Note: RxNorm interaction API endpoints (/interaction/interaction.json, etc.) have been
-            # deprecated by the NLM and are no longer functional. FDA labels provide authoritative
-            # contraindication and warning information.
-            print(f"[DEBUG] Querying FDA for medication information", file=sys.stderr)
+            # ========== PRIORITY SOURCE 1: DrugBank Database (RAG) ==========
+            # Get comprehensive drug interactions from local DrugBank database
+            # This is the primary source - fast, reliable, and comprehensive
+            print(f"[DEBUG] Querying DrugBank database for interactions (PRIMARY)", file=sys.stderr)
+            if normalized_names:
+                drugbank_interactions = self.api_client.get_drug_interactions_drugbank(normalized_names)
+                if drugbank_interactions:
+                    print(f"[DEBUG] Found {len(drugbank_interactions)} interactions in DrugBank", file=sys.stderr)
+                    results["drug_interactions"].extend(drugbank_interactions)
+                    results["metadata"]["sources_queried"].append("DrugBank (Primary)")
+                
+                # Also get food interactions from DrugBank
+                for med_name in medications:
+                    food_interactions = self.api_client.get_food_interactions_drugbank(med_name)
+                    if food_interactions:
+                        print(f"[DEBUG] Found {len(food_interactions)} food interactions for {med_name}", file=sys.stderr)
+                        for interaction in food_interactions:
+                            results["food_interactions"].append({
+                                "medication": med_name,
+                                "food": interaction,
+                                "source": "DrugBank",
+                                "confidence": "high"
+                            })
+                        if "DrugBank (Food)" not in results["metadata"]["sources_queried"]:
+                            results["metadata"]["sources_queried"].append("DrugBank (Food)")
+            
+            # Step 2: Get FDA drug information (supplements RxNorm/DrugBank data)
+            # Includes warnings, contraindications, and documented interactions
+            # Note: RxNorm interaction API endpoints have been deprecated by the NLM
+            print(f"[DEBUG] Querying FDA for additional medication information", file=sys.stderr)
             fda_queried = False
             for med_name in medications:
                 fda_info = self.api_client.get_fda_drug_info(med_name)
@@ -101,30 +127,23 @@ class RetrievalAgent:
             if fda_queried:
                 results["metadata"]["sources_queried"].append("FDA Drug Labels")
             
-            # Step 3: Web search for drug interaction information
-            # Since RxNorm interaction API is deprecated, web search provides current interaction data
-            # from clinical databases, research, and pharmacovigilance sources
+            # Step 3: Web search for supplementary drug interaction information
+            # Web search provides current interaction data from clinical databases and research
+            # This is a secondary source to supplement DrugBank and FDA data
             if len(medications) > 1:
                 import sys
-                print(f"[DEBUG] Searching web for drug interaction information", file=sys.stderr)
+                print(f"[DEBUG] Supplementing with web search for drug interactions", file=sys.stderr)
                 interaction_search_query = f"{medications[0]} {medications[1]} drug interaction"
                 if len(medications) > 2:
                     interaction_search_query = "drug interactions " + " ".join(medications)
                 
                 web_interactions = self.api_client.search_drug_websites(interaction_search_query)
                 if web_interactions:
-                    print(f"[DEBUG] Found {len(web_interactions)} web results for interactions", file=sys.stderr)
+                    print(f"[DEBUG] Found {len(web_interactions)} supplementary web results", file=sys.stderr)
                     results["web_sources"].extend(web_interactions)
-                    results["metadata"]["sources_queried"].append("Web Search - Interactions")
+                    results["metadata"]["sources_queried"].append("Web Search (Supplementary)")
             
-            # Step 2c: Optionally get additional interactions from DrugBank (if credentials available)
-            if len(normalized_names) > 1:
-                drugbank_interactions = self.api_client.get_drug_interactions_drugbank(normalized_names)
-                if drugbank_interactions:
-                    results["drug_interactions"].extend(drugbank_interactions)
-                    results["metadata"]["sources_queried"].append("DrugBank")
-            
-            # Step 4: Web RAG search for additional context
+            # Step 4: Additional web RAG search for additional context
             web_queried = False
             for med_name in medications:
                 web_results = self.api_client.search_drug_websites(med_name)
@@ -133,7 +152,7 @@ class RetrievalAgent:
                     web_queried = True
             
             if web_queried:
-                results["metadata"]["sources_queried"].append("Web")
+                results["metadata"]["sources_queried"].append("Web (General Info)")
         
         # Step 5: Handle food interactions
         if foods:

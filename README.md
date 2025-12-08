@@ -9,8 +9,9 @@ A web-based Medication Interaction Tracker that helps patients identify potentia
 - **LLM**: OpenAI GPT-4 (via OpenAI API)
 - **Database APIs**: 
   - RxNorm API (for medication normalization)
-  - DrugBank API (for interaction data)
+  - **DrugBank Database** (RAG approach - local SQLite from Download account)
   - FDA Drug Database (for official drug information)
+  - Web Search (SerpAPI for additional data)
 - **Session Management**: Client-side storage (localStorage) for Vercel serverless deployment
 
 ### Frontend

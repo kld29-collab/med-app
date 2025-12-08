@@ -4,13 +4,15 @@ This is the deterministic layer - no LLM involvement.
 
 NOTE: RxNorm API is used ONLY for drug name normalization and RxCUI identifier resolution.
 RxNorm's /interaction/ endpoints (referenced in older NIH documentation) have been deprecated
-and are no longer available. Drug interaction data is retrieved from FDA drug labels (OpenFDA)
-and web search results instead.
+and are no longer available. Drug interaction data is retrieved from DrugBank database (RAG approach),
+FDA drug labels (OpenFDA), and web search results instead.
 """
 import requests
 import time
 from typing import List, Dict, Optional
+from pathlib import Path
 from config import Config
+from .drugbank_db import DrugBankDatabase
 
 
 class DrugAPIClient:
@@ -22,6 +24,51 @@ class DrugAPIClient:
         self.drugbank_username = Config.DRUGBANK_USERNAME
         self.drugbank_password = Config.DRUGBANK_PASSWORD
         self.fda_base_url = Config.FDA_API_BASE_URL
+        
+        # Initialize DrugBank database
+        self.drugbank_db = self._initialize_drugbank_db()
+    
+    def _initialize_drugbank_db(self) -> Optional[DrugBankDatabase]:
+        """
+        Initialize DrugBank database connection.
+        
+        Returns:
+            DrugBankDatabase instance or None if initialization fails
+        """
+        import sys
+        try:
+            # Paths for database and XML file
+            base_path = Path(__file__).parent.parent
+            db_file = base_path / "data" / "drugbank.db"
+            xml_file = base_path / "data" / "full_database.xml"
+            
+            # Create database if it doesn't exist
+            if not db_file.exists():
+                if xml_file.exists():
+                    print(f"[INFO] Creating DrugBank database from XML...", file=sys.stderr)
+                    db = DrugBankDatabase(str(db_file), str(xml_file))
+                    if db.initialize():
+                        print(f"[INFO] DrugBank database created successfully", file=sys.stderr)
+                        return db
+                    else:
+                        print(f"[WARNING] Failed to create DrugBank database", file=sys.stderr)
+                        return None
+                else:
+                    print(f"[WARNING] DrugBank XML file not found at {xml_file}", file=sys.stderr)
+                    return None
+            
+            # Connect to existing database
+            db = DrugBankDatabase(str(db_file))
+            if db.connect():
+                print(f"[INFO] Connected to existing DrugBank database", file=sys.stderr)
+                return db
+            else:
+                print(f"[WARNING] Failed to connect to DrugBank database", file=sys.stderr)
+                return None
+                
+        except Exception as e:
+            print(f"[WARNING] Error initializing DrugBank database: {str(e)}", file=sys.stderr)
+            return None
     
     def normalize_drug_name_rxnorm(self, drug_name: str) -> Optional[Dict]:
         """
@@ -136,7 +183,10 @@ class DrugAPIClient:
     
     def get_drug_interactions_drugbank(self, drug_names: List[str]) -> List[Dict]:
         """
-        Get drug interactions from DrugBank API.
+        Get drug interactions from DrugBank database (RAG approach).
+        
+        Uses local DrugBank database for fast, comprehensive interaction lookup.
+        Includes fuzzy matching fallback for brand vs generic name mismatches.
         
         Args:
             drug_names: List of normalized drug names
@@ -144,35 +194,130 @@ class DrugAPIClient:
         Returns:
             List of interaction dictionaries
         """
-        if not self.drugbank_username or not self.drugbank_password:
+        import sys
+        
+        if not self.drugbank_db:
+            print(f"[WARNING] DrugBank database not initialized", file=sys.stderr)
             return []
         
         interactions = []
         
         try:
-            # Note: DrugBank API requires authentication and has specific endpoints
-            # This is a simplified example - actual implementation depends on DrugBank API version
-            base_url = f"{Config.DRUGBANK_BASE_URL}/releases/latest"
+            # Look up each drug in the database
+            drug_ids = []
+            for drug_name in drug_names:
+                # Try exact match first, then fuzzy match as fallback
+                drug = self.drugbank_db.get_drug_by_name_fuzzy(drug_name)
+                if drug:
+                    drug_ids.append(drug["id"])
+                    print(f"[DEBUG] Found DrugBank entry for {drug_name}: {drug['id']} (name in DB: {drug['name']})", file=sys.stderr)
+                else:
+                    print(f"[DEBUG] No DrugBank entry found for {drug_name} (tried exact and partial match)", file=sys.stderr)
             
-            # For each drug, check interactions with others
-            for i, drug1 in enumerate(drug_names):
-                for drug2 in drug_names[i+1:]:
-                    # DrugBank API call would go here
-                    # This is a placeholder structure
-                    interaction = {
-                        "drug1": drug1,
-                        "drug2": drug2,
-                        "severity": "unknown",  # Would be retrieved from API
-                        "description": "Interaction data from DrugBank",
-                        "source": "DrugBank",
-                        "confidence": "medium"
-                    }
-                    interactions.append(interaction)
+            if not drug_ids:
+                print(f"[WARNING] No drugs found in DrugBank database", file=sys.stderr)
+                return []
             
+            # Get interaction matrix for all drug combinations
+            db_interactions = self.drugbank_db.get_interaction_matrix(drug_ids)
+            
+            for interaction in db_interactions:
+                interactions.append({
+                    "drug1_id": interaction["drug_id"],
+                    "drug2_id": interaction["interacting_drug_id"],
+                    "drug2_name": interaction["interacting_drug_name"],
+                    "description": interaction["description"],
+                    "source": "DrugBank",
+                    "confidence": "high"
+                })
+            
+            print(f"[DEBUG] Found {len(interactions)} interactions from DrugBank", file=sys.stderr)
             return interactions
             
         except Exception as e:
-            print(f"Error getting DrugBank interactions: {str(e)}")
+            print(f"[ERROR] Error getting DrugBank interactions: {str(e)}", file=sys.stderr)
+            return []
+    
+    def get_drug_details_drugbank(self, drug_name: str) -> Optional[Dict]:
+        """
+        Get detailed drug information from DrugBank database.
+        
+        Args:
+            drug_name: Name of the drug
+        
+        Returns:
+            Dictionary with drug details or None
+        """
+        import sys
+        
+        if not self.drugbank_db:
+            return None
+        
+        try:
+            drug = self.drugbank_db.get_drug_by_name(drug_name)
+            if drug:
+                print(f"[DEBUG] Retrieved DrugBank details for {drug_name}", file=sys.stderr)
+                return drug
+            return None
+            
+        except Exception as e:
+            print(f"[ERROR] Error getting DrugBank details for {drug_name}: {str(e)}", file=sys.stderr)
+            return None
+    
+    def get_food_interactions_drugbank(self, drug_name: str) -> List[str]:
+        """
+        Get food interactions from DrugBank database.
+        Uses fuzzy matching to handle brand vs generic name differences.
+        
+        Args:
+            drug_name: Name of the drug
+        
+        Returns:
+            List of food interaction descriptions
+        """
+        import sys
+        
+        if not self.drugbank_db:
+            return []
+        
+        try:
+            # Try exact match first, then fuzzy match as fallback
+            drug = self.drugbank_db.get_drug_by_name_fuzzy(drug_name)
+            if not drug:
+                print(f"[DEBUG] No DrugBank entry found for food interactions: {drug_name}", file=sys.stderr)
+                return []
+            
+            interactions = self.drugbank_db.get_food_interactions(drug["id"])
+            if interactions:
+                print(f"[DEBUG] Found {len(interactions)} food interactions for {drug_name} (matched to: {drug['name']})", file=sys.stderr)
+            return interactions
+            
+        except Exception as e:
+            print(f"[ERROR] Error getting food interactions for {drug_name}: {str(e)}", file=sys.stderr)
+            return []
+    
+    def search_drugbank(self, search_term: str) -> List[Dict]:
+        """
+        Search DrugBank database for drugs by name.
+        
+        Args:
+            search_term: Partial drug name
+        
+        Returns:
+            List of matching drug dictionaries
+        """
+        import sys
+        
+        if not self.drugbank_db:
+            return []
+        
+        try:
+            results = self.drugbank_db.search_drugs(search_term)
+            print(f"[DEBUG] DrugBank search for '{search_term}' returned {len(results)} results", file=sys.stderr)
+            return results
+            
+        except Exception as e:
+            print(f"[ERROR] Error searching DrugBank: {str(e)}", file=sys.stderr)
             return []
     
     def get_fda_drug_info(self, drug_name: str) -> Optional[Dict]:

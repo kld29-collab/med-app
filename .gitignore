@@ -36,3 +36,6 @@ htmlcov/
 # Logs
 *.log
 
+# DrugBank data (large files)
+data/full_database.xml
+data/*.db
