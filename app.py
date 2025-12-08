@@ -261,6 +261,12 @@ def handle_profile():
             # This is stateless - we don't store on server
             updated_context = merge_user_context(updates=data)
             
+            # Clear query cache when profile is updated
+            # Query results depend on user context, so we can't reuse cached results
+            cache = get_cache_manager()
+            cache.clear_cache('query')
+            print("[DEBUG] Query cache cleared due to profile update")
+            
             return jsonify({
                 "success": True,
                 "user_context": updated_context,
@@ -280,6 +286,12 @@ def clear_profile():
     Clear user profile/context.
     Returns default empty context - client should clear localStorage.
     """
+    # Clear query cache when profile is cleared
+    # Query results depend on user context, so we can't reuse cached results
+    cache = get_cache_manager()
+    cache.clear_cache('query')
+    print("[DEBUG] Query cache cleared due to profile clear")
+    
     return jsonify({
         "success": True,
         "user_context": get_default_user_context(),
