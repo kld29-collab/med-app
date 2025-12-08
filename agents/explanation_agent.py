@@ -166,11 +166,55 @@ class ExplanationAgent:
             
             explanation = json.loads(response.choices[0].message.content)
             
-            # Add metadata
+            # Add metadata with source details for display
+            sources_list = []
+            
+            # Build sources list from available data
+            if interaction_table:
+                sources_list.append({
+                    "name": "DrugBank",
+                    "type": "drug-interactions",
+                    "count": len(interaction_table),
+                    "description": "Local drug interaction database"
+                })
+            
+            if fda_info:
+                sources_list.append({
+                    "name": "FDA",
+                    "type": "drug-labels",
+                    "count": len(fda_info),
+                    "description": "Official FDA drug labeling information"
+                })
+            
+            if web_sources:
+                sources_list.append({
+                    "name": "Web Search",
+                    "type": "web-results",
+                    "count": len(web_sources),
+                    "description": "Clinical and medical websites"
+                })
+            
+            if citations:
+                sources_list.append({
+                    "name": "Citations",
+                    "type": "citations",
+                    "count": len(citations),
+                    "description": "Referenced sources"
+                })
+            
             explanation["metadata"] = {
                 "sources_used": interaction_data.get("metadata", {}).get("sources_queried", []),
                 "citation_count": len(citations),
-                "interaction_count": len(interaction_table)
+                "interaction_count": len(interaction_table),
+                "sources": sources_list
+            }
+            
+            # Include raw source data for expandable panel
+            explanation["raw_sources"] = {
+                "drugbank": interaction_table if interaction_table else [],
+                "fda": fda_info if fda_info else [],
+                "web": web_sources if web_sources else [],
+                "citations": citations if citations else []
             }
             
             # Ensure disclaimer is present

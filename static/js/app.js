@@ -121,13 +121,11 @@ async function handleSubmit(e) {
             throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
         }
         
-        // Display explanation
-        if (data.formatted_explanation) {
-            addMessage(data.formatted_explanation, 'bot');
-        } else if (data.explanation) {
-            // Fallback: format explanation object
-            const formatted = formatExplanation(data.explanation);
-            addMessage(formatted, 'bot');
+        // Display explanation with sources panel
+        if (data.explanation) {
+            // Pass full explanation object to display with sources
+            const formatted = formatExplanationWithSources(data.explanation);
+            addMessage(formatted, 'bot', false, data.explanation);
         } else {
             addMessage('I received your query but could not generate a response. Please try again.', 'bot');
         }
@@ -145,7 +143,7 @@ async function handleSubmit(e) {
 }
 
 // Add message to chat
-function addMessage(content, type, isError = false) {
+function addMessage(content, type, isError = false, explanationData = null) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}-message${isError ? ' error-message' : ''}`;
     
@@ -155,6 +153,12 @@ function addMessage(content, type, isError = false) {
     // Convert markdown-like formatting to HTML
     const formattedContent = formatMessageContent(content);
     contentDiv.innerHTML = formattedContent;
+    
+    // Add sources panel if explanation data is provided
+    if (explanationData && explanationData.metadata && explanationData.metadata.sources) {
+        const sourcesPanel = createSourcesPanel(explanationData);
+        contentDiv.appendChild(sourcesPanel);
+    }
     
     messageDiv.appendChild(contentDiv);
     chatMessages.appendChild(messageDiv);
@@ -240,6 +244,81 @@ function formatExplanation(explanation) {
     }
     
     return formatted;
+}
+
+// Format explanation with sources panel
+function formatExplanationWithSources(explanation) {
+    // Use the same format as formatExplanation
+    return formatExplanation(explanation);
+}
+
+// Create expandable sources panel
+function createSourcesPanel(explanationData) {
+    const panel = document.createElement('details');
+    panel.className = 'sources-panel';
+    
+    const summary = document.createElement('summary');
+    summary.className = 'sources-summary';
+    
+    // Count total sources
+    const sources = explanationData.metadata?.sources || [];
+    const totalCount = sources.reduce((sum, s) => sum + (s.count || 0), 0);
+    
+    summary.innerHTML = `📚 View Sources (${sources.length})`;
+    panel.appendChild(summary);
+    
+    // Create sources list
+    const sourcesList = document.createElement('div');
+    sourcesList.className = 'sources-list';
+    
+    sources.forEach(source => {
+        const sourceItem = document.createElement('div');
+        sourceItem.className = `source-item source-${source.type.toLowerCase()}`;
+        
+        const sourceTitle = document.createElement('div');
+        sourceTitle.className = 'source-title';
+        sourceTitle.innerHTML = `<strong>${escapeHtml(source.name)}</strong> <span class="source-count">${source.count} ${source.count === 1 ? 'item' : 'items'}</span>`;
+        sourceItem.appendChild(sourceTitle);
+        
+        const sourceDesc = document.createElement('div');
+        sourceDesc.className = 'source-description';
+        sourceDesc.textContent = source.description;
+        sourceItem.appendChild(sourceDesc);
+        
+        // Add source-specific details
+        if (source.type === 'drug-interactions' && explanationData.raw_sources?.drugbank) {
+            const drugbankItems = explanationData.raw_sources.drugbank.slice(0, 3);
+            if (drugbankItems.length > 0) {
+                const details = document.createElement('ul');
+                details.className = 'source-details';
+                drugbankItems.forEach(item => {
+                    const li = document.createElement('li');
+                    const drug1 = item.drug1_id || 'Unknown';
+                    const drug2 = item.drug2_name || 'Unknown';
+                    li.textContent = `${drug1} ↔ ${drug2}`;
+                    details.appendChild(li);
+                });
+                sourceItem.appendChild(details);
+            }
+        } else if (source.type === 'drug-labels' && explanationData.raw_sources?.fda) {
+            const fdaItems = explanationData.raw_sources.fda.slice(0, 3);
+            if (fdaItems.length > 0) {
+                const details = document.createElement('ul');
+                details.className = 'source-details';
+                fdaItems.forEach(item => {
+                    const li = document.createElement('li');
+                    li.textContent = item.drug_name || 'Unknown';
+                    details.appendChild(li);
+                });
+                sourceItem.appendChild(details);
+            }
+        }
+        
+        sourcesList.appendChild(sourceItem);
+    });
+    
+    panel.appendChild(sourcesList);
+    return panel;
 }
 
 // Profile Management

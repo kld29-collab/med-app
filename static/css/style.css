@@ -435,3 +435,102 @@ footer {
     }
 }
 
+/* Sources Panel Styling */
+.sources-panel {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background-color: #f0f4f8;
+    border: 1px solid #d0dce6;
+    border-radius: 6px;
+    font-size: 0.95rem;
+}
+
+.sources-summary {
+    cursor: pointer;
+    user-select: none;
+    font-weight: 600;
+    color: #667eea;
+    padding: 0.5rem;
+    margin: -0.5rem -0.5rem 0 -0.5rem;
+    padding-left: 1.5rem;
+    transition: background-color 0.2s ease;
+}
+
+.sources-summary:hover {
+    background-color: rgba(102, 126, 234, 0.1);
+    border-radius: 6px;
+}
+
+.sources-summary::marker {
+    color: #667eea;
+}
+
+.sources-list {
+    margin-top: 1rem;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.source-item {
+    padding: 0.75rem;
+    background-color: white;
+    border-left: 4px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.source-item.source-drug-interactions {
+    border-left-color: #667eea;
+}
+
+.source-item.source-drug-labels {
+    border-left-color: #ffc107;
+}
+
+.source-item.source-web-results {
+    border-left-color: #28a745;
+}
+
+.source-item.source-citations {
+    border-left-color: #6c757d;
+}
+
+.source-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.25rem;
+}
+
+.source-title strong {
+    color: #333;
+}
+
+.source-count {
+    background-color: #f0f0f0;
+    color: #666;
+    font-size: 0.85rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    font-weight: normal;
+}
+
+.source-description {
+    color: #666;
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+}
+
+.source-details {
+    margin-top: 0.5rem;
+    margin-left: 1.5rem;
+    list-style: disc;
+    color: #555;
+    font-size: 0.85rem;
+}
+
+.source-details li {
+    margin-bottom: 0.25rem;
+}
+
+
