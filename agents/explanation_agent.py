@@ -86,92 +86,71 @@ class ExplanationAgent:
         food_interactions = interaction_data.get("food_interactions", [])
         query_focus = interaction_data.get("metadata", {}).get("query_focus", "general")
         
-        system_prompt = """You are a medical information translator. Your job is to take technical 
-        medication interaction data and explain it in plain, everyday language that non-medical users 
-        can understand.
-
-        IMPORTANT RULES:
-        1. ONLY use information provided in the interaction data - do not add information not present
-        2. Use simple, clear language - avoid medical jargon
-        3. If information is uncertain or conflicting, clearly state that
-        4. Always recommend consulting a healthcare provider for medical decisions
-        5. Include appropriate safety disclaimers
-        6. Flag any uncertainties or low-confidence data
-        7. Explain WHY an interaction might occur if that information is available
-        8. RESPECT QUERY FOCUS: Only explain interactions relevant to what the user asked about
-           - If query_focus is "food": ONLY explain food/beverage interactions, ignore medications
-           - If query_focus is "drug_drug": ONLY explain medication-medication interactions
-           - If query_focus is "supplement": ONLY explain supplement interactions
-           - If query_focus is "general": Explain all relevant interactions found
+        # DEBUG: Log what we received
+        import sys
+        print(f"[DEBUG EXPLANATION] Query focus: {query_focus}", file=sys.stderr)
+        print(f"[DEBUG EXPLANATION] Food interactions count: {len(food_interactions)}", file=sys.stderr)
+        print(f"[DEBUG EXPLANATION] Drug interactions count: {len(interaction_table)}", file=sys.stderr)
+        if food_interactions:
+            print(f"[DEBUG EXPLANATION] First food interaction: {food_interactions[0]}", file=sys.stderr)
         
-        SEVERITY ASSESSMENT:
-        When assigning severity, use these guidelines:
-        - HIGH/SEVERE: Mentions death, coma, hospitalization, overdose, respiratory failure, organ damage, FDA black box warning, or serious harm
-        - MODERATE: Mentions significant side effects, reduced effectiveness, serious symptoms (but not life-threatening)
-        - MILD: Mentions minor side effects or manageable interactions
-        - UNKNOWN: Only use if truly no information about severity/effects is available
-        
-        If you see concerning language (like FDA warnings about death, serious harm, breathing problems), 
-        classify as HIGH even if the original data says "unknown".
+        system_prompt = """You are a medical information translator. Your ONLY job is to explain 
+        the medication interaction data provided to you. Nothing more.
 
-        Structure your response as JSON with these fields:
+        CRITICAL RULES (FOLLOW THESE EXACTLY):
+        1. ONLY explain the data provided - do not make up information
+        2. If food interactions data is provided AND query_focus="food": MUST explain the food interactions
+        3. Do NOT say "no interactions found" if the data list has items in it
+        4. If the user asked about food (query_focus="food"): explain EVERY food interaction in the list
+        5. Use simple, clear language - avoid medical jargon
+        6. Always recommend consulting a healthcare provider
+        
+        RESPONSE FORMAT: Return ONLY valid JSON in this exact structure:
         {
-            "summary": "Brief overall summary (2-3 sentences)",
+            "summary": "Brief 2-3 sentence summary of findings",
             "interactions": [
                 {
                     "items": ["item1", "item2"],
-                    "type": "drug-drug",
+                    "type": "food-drug",
                     "explanation": "Plain language explanation",
                     "severity": "high/moderate/mild/unknown",
-                    "recommendation": "What the user should do"
+                    "recommendation": "What to do about this"
                 }
             ],
-            "uncertainties": ["List any uncertainties or conflicting information"],
-            "disclaimer": "Medical disclaimer text",
-            "recommendation": "Overall recommendation to consult healthcare provider"
-        }"""
+            "uncertainties": ["any uncertain or low-confidence information"],
+            "disclaimer": "Medical disclaimer",
+            "recommendation": "Overall recommendation"
+        }
         
-        user_prompt = f"""Here is the interaction data retrieved from medical databases:
-
-        Query Focus: {query_focus}
-        (This tells you what the user was specifically asking about - only explain relevant interactions)
-
-        Normalized Medications:
-        {json.dumps(normalized_medications, indent=2)}
-
-        Food Interactions (MOST IMPORTANT - list of food/beverage interactions for each medication):
-        {json.dumps(food_interactions, indent=2) if food_interactions else "None found"}
-
-        Drug Interactions (interactions between medications):
-        {json.dumps(interaction_table, indent=2) if interaction_table else "None found"}
-
-        FDA Information:
-        {json.dumps(fda_info, indent=2) if fda_info else "None"}
-
-        Web Search Results (additional context):
-        {json.dumps(web_sources[:3], indent=2) if web_sources else "None"}
-
-        User Context:
-        {json.dumps(user_context, indent=2) if user_context else "None provided"}
-
-        Citations:
-        {json.dumps(citations, indent=2) if citations else "None"}
-
-        Generate a plain-language explanation based on this data. 
+        DO NOT DEVIATE FROM THIS FORMAT."""
         
-        CRITICAL INSTRUCTIONS:
-        1. Respect the query_focus field above - ONLY explain interactions matching the query_focus
-        2. If query_focus="food": Use ONLY the Food Interactions list above - explain ALL items in that list
-        3. If query_focus="drug_drug": Use ONLY the Drug Interactions list above
-        4. If query_focus="supplement": Use ONLY food interactions marked as supplements
-        5. If query_focus="general": Use all available interactions
-        
-        PRIORITY LOGIC:
-        - Look at the appropriate data source based on query_focus
-        - Include ALL relevant interactions found (don't skip any)
-        - Use the exact wording from the data when possible
-        - Synthesize when multiple sources exist
-        - Only say "no interactions found" if the list is actually empty"""
+        user_prompt = f"""INTERACTION DATA TO EXPLAIN:
+
+User's Query Focus: {query_focus}
+
+Medications: {json.dumps(normalized_medications, indent=2)}
+
+FOOD/BEVERAGE INTERACTIONS ({len(food_interactions)} items found):
+{json.dumps(food_interactions, indent=2)}
+
+DRUG-DRUG INTERACTIONS ({len(interaction_table)} items found):
+{json.dumps(interaction_table, indent=2) if interaction_table else "(empty)"}
+
+FDA Information:
+{json.dumps(fda_info, indent=2) if fda_info else "(none)"}
+
+Web Search Results:
+{json.dumps(web_sources[:2], indent=2) if web_sources else "(none)"}
+
+YOUR TASK:
+1. Query focus is: {query_focus}
+2. This means explain ONLY: {"FOOD/BEVERAGE interactions" if query_focus == "food" else "DRUG-DRUG interactions" if query_focus == "drug_drug" else "all interactions"}
+3. You have {len(food_interactions)} food interactions to explain
+4. You have {len(interaction_table)} drug interactions to explain
+5. Create a JSON response explaining the relevant interactions based on query_focus
+
+IMPORTANT: If query_focus="food" and food interactions list has 7 items, 
+then you MUST create 7 interaction objects in your response (one for each food interaction)."""
         
         try:
             response = self.client.chat.completions.create(
