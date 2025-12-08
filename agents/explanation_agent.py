@@ -77,7 +77,8 @@ class ExplanationAgent:
         if user_context is None:
             user_context = {}
         
-        interaction_table = interaction_data.get("interaction_table", [])
+        # Get interaction data - retrieval agent returns "drug_interactions" not "interaction_table"
+        interaction_table = interaction_data.get("drug_interactions", interaction_data.get("interaction_table", []))
         normalized_medications = interaction_data.get("normalized_medications", [])
         citations = interaction_data.get("citations", [])
         web_sources = interaction_data.get("web_sources", [])
