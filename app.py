@@ -8,9 +8,11 @@ from agents.retrieval_agent import RetrievalAgent
 from agents.explanation_agent import ExplanationAgent
 from utils.session_manager import get_default_user_context, merge_user_context
 from utils.validators import validate_user_query, validate_user_context
+from utils.cache_manager import get_cache_manager
 from config import Config
 import json
 import os
+import time
 
 # Get the directory of this file
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -88,14 +90,22 @@ def health_check():
 @app.route('/api/query', methods=['POST'])
 def handle_query():
     """
-    Handle user query through the three-agent pipeline.
+    Handle user query through the three-agent pipeline with intelligent caching.
     
     Expected JSON:
     {
         "query": "user's natural language question",
         "user_context": {...}  # sent from client-side localStorage
     }
+    
+    Caching strategy:
+    1. Check query cache (exact matches return in <10ms)
+    2. Check interaction cache (avoid DrugBank/FDA re-lookups)
+    3. Fall through to full pipeline if needed
     """
+    start_time = time.time()
+    cache = get_cache_manager()
+    
     try:
         data = request.get_json()
         
@@ -112,6 +122,21 @@ def handle_query():
         # Get user context from request (client-side localStorage)
         # Default to empty context if not provided
         user_context = data.get('user_context') or get_default_user_context()
+        
+        # ============ ATTEMPT 1: QUERY CACHE HIT ============
+        # If exact query was asked before, return cached explanation
+        cached_result = cache.get_cached_explanation(user_query)
+        if cached_result is not None:
+            elapsed = time.time() - start_time
+            print(f"[PERFORMANCE] Query cache hit - {elapsed:.3f}s (vs ~5-8s normally)")
+            return jsonify({
+                "success": True,
+                "query_plan": cached_result.get('query_plan'),
+                "interaction_data": cached_result.get('interaction_data'),
+                "explanation": cached_result.get('explanation'),
+                "formatted_explanation": cached_result.get('formatted_explanation'),
+                "cache_hit": "query"
+            })
         
         # Initialize agents (lazy loading)
         try:
@@ -177,12 +202,23 @@ def handle_query():
             print(f"[ERROR] Formatting explanation failed: {str(e)}")
             formatted_explanation = None
         
-        return jsonify({
-            "success": True,
+        # ============ CACHE THE RESULT ============
+        result = {
             "query_plan": query_plan,
             "interaction_data": interaction_data,
             "explanation": explanation,
             "formatted_explanation": formatted_explanation
+        }
+        cache.cache_explanation(user_query, result)
+        
+        elapsed = time.time() - start_time
+        print(f"[PERFORMANCE] Full pipeline executed in {elapsed:.2f}s")
+        
+        return jsonify({
+            "success": True,
+            **result,
+            "cache_hit": None,
+            "response_time": f"{elapsed:.2f}s"
         })
         
     except Exception as e:
@@ -248,6 +284,38 @@ def clear_profile():
         "success": True,
         "user_context": get_default_user_context(),
         "message": "Profile cleared. Clear localStorage on client."
+    })
+
+
+@app.route('/api/cache-stats', methods=['GET'])
+def get_cache_stats():
+    """
+    Get cache performance statistics.
+    
+    Returns:
+        - Hit rates for query, drug, and interaction caches
+        - Cost and time savings estimates
+        - Total cached entries
+    """
+    cache = get_cache_manager()
+    stats = cache.get_cache_stats()
+    
+    return jsonify({
+        "success": True,
+        "cache_stats": stats,
+        "message": "Cache statistics collected. Query the API to generate cache hits."
+    })
+
+
+@app.route('/api/cache-clear', methods=['POST'])
+def clear_cache():
+    """Clear all caches (useful for testing or resetting stats)."""
+    cache = get_cache_manager()
+    cache.clear_cache()
+    
+    return jsonify({
+        "success": True,
+        "message": "All caches cleared"
     })
 
 
