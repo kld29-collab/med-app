@@ -33,6 +33,7 @@ class RetrievalAgent:
                     "foods": [...],
                     "supplements": [...],
                     "query_type": "...",
+                    "query_focus": "food" | "supplement" | "drug_drug" | "general",
                     "user_context": {...}
                 }
         
@@ -42,6 +43,7 @@ class RetrievalAgent:
         medications = query_plan.get("medications", [])
         foods = query_plan.get("foods", [])
         supplements = query_plan.get("supplements", [])
+        query_focus = query_plan.get("query_focus", "general")
         
         results = {
             "normalized_medications": [],
@@ -53,6 +55,7 @@ class RetrievalAgent:
             "citations": [],
             "metadata": {
                 "query_type": query_plan.get("query_type", "interaction_check"),
+                "query_focus": query_focus,
                 "sources_queried": []
             }
         }
@@ -87,26 +90,34 @@ class RetrievalAgent:
             # This is the primary source - fast, reliable, and comprehensive
             print(f"[DEBUG] Querying DrugBank database for interactions (PRIMARY)", file=sys.stderr)
             if normalized_names:
-                drugbank_interactions = self.api_client.get_drug_interactions_drugbank(normalized_names)
-                if drugbank_interactions:
-                    print(f"[DEBUG] Found {len(drugbank_interactions)} interactions in DrugBank", file=sys.stderr)
-                    results["drug_interactions"].extend(drugbank_interactions)
-                    results["metadata"]["sources_queried"].append("DrugBank (Primary)")
+                # FILTERING: Only retrieve drug-drug interactions if user is asking about them
+                # If user is asking about food/supplement interactions, skip drug-drug
+                if query_focus in ("drug_drug", "general"):
+                    drugbank_interactions = self.api_client.get_drug_interactions_drugbank(normalized_names)
+                    if drugbank_interactions:
+                        print(f"[DEBUG] Found {len(drugbank_interactions)} interactions in DrugBank", file=sys.stderr)
+                        results["drug_interactions"].extend(drugbank_interactions)
+                        results["metadata"]["sources_queried"].append("DrugBank (Primary)")
+                else:
+                    print(f"[DEBUG] Skipping drug-drug interactions (query focused on {query_focus})", file=sys.stderr)
                 
-                # Also get food interactions from DrugBank
-                for med_name in medications:
-                    food_interactions = self.api_client.get_food_interactions_drugbank(med_name)
-                    if food_interactions:
-                        print(f"[DEBUG] Found {len(food_interactions)} food interactions for {med_name}", file=sys.stderr)
-                        for interaction in food_interactions:
-                            results["food_interactions"].append({
-                                "medication": med_name,
-                                "food": interaction,
-                                "source": "DrugBank",
-                                "confidence": "high"
-                            })
-                        if "DrugBank (Food)" not in results["metadata"]["sources_queried"]:
-                            results["metadata"]["sources_queried"].append("DrugBank (Food)")
+                # Get food interactions from DrugBank - only if user is asking about food or general
+                if query_focus in ("food", "general"):
+                    for med_name in medications:
+                        food_interactions = self.api_client.get_food_interactions_drugbank(med_name)
+                        if food_interactions:
+                            print(f"[DEBUG] Found {len(food_interactions)} food interactions for {med_name}", file=sys.stderr)
+                            for interaction in food_interactions:
+                                results["food_interactions"].append({
+                                    "medication": med_name,
+                                    "food": interaction,
+                                    "source": "DrugBank",
+                                    "confidence": "high"
+                                })
+                            if "DrugBank (Food)" not in results["metadata"]["sources_queried"]:
+                                results["metadata"]["sources_queried"].append("DrugBank (Food)")
+                else:
+                    print(f"[DEBUG] Skipping food interactions (query focused on {query_focus})", file=sys.stderr)
             
             # Step 2: Get FDA drug information (supplements RxNorm/DrugBank data)
             # Includes warnings, contraindications, and documented interactions
@@ -130,7 +141,8 @@ class RetrievalAgent:
             # Step 3: Web search for supplementary drug interaction information
             # Web search provides current interaction data from clinical databases and research
             # This is a secondary source to supplement DrugBank and FDA data
-            if len(medications) > 1:
+            # FILTERING: Only search for drug-drug interactions if that's what user asked about
+            if len(medications) > 1 and query_focus in ("drug_drug", "general"):
                 import sys
                 print(f"[DEBUG] Supplementing with web search for drug interactions", file=sys.stderr)
                 interaction_search_query = f"{medications[0]} {medications[1]} drug interaction"

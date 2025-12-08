@@ -77,7 +77,12 @@ class QueryInterpreter:
         - medications: List of all medications mentioned (both prescription and OTC)
         - foods: List of foods or beverages mentioned
         - supplements: List of supplements or vitamins mentioned
-        - query_type: Type of query (e.g., "interaction_check", "food_interaction", "supplement_interaction")
+        - query_type: Type of query (e.g., "interaction_check", "food_interaction", "supplement_interaction", "drug_drug_interaction")
+        - query_focus: What the user is specifically asking about:
+            * "food" if asking about a specific food/beverage with medications
+            * "supplement" if asking about a specific supplement with medications
+            * "drug_drug" if asking about interactions between medications
+            * "general" if not clear or general information requested
         - user_context: Any relevant user information from the query (age, weight, conditions mentioned)
 
         Return ONLY valid JSON in this exact format:
@@ -86,11 +91,19 @@ class QueryInterpreter:
             "foods": ["food1"],
             "supplements": ["supplement1"],
             "query_type": "interaction_check",
+            "query_focus": "food",
             "user_context": {}
         }
 
         If information is not mentioned, use empty lists or empty objects. Be precise and only extract 
-        what is explicitly stated or clearly implied."""
+        what is explicitly stated or clearly implied.
+        
+        IMPORTANT: Set query_focus based on what the user is specifically asking about:
+        - If user mentions a specific food/beverage (grapefruit, alcohol, etc): set to "food"
+        - If user mentions a specific supplement: set to "supplement"
+        - If user is asking about their medications together: set to "drug_drug"
+        - Otherwise: set to "general"
+        """
         
         user_prompt = f"""User query: "{user_query}"
 
@@ -125,6 +138,7 @@ class QueryInterpreter:
                 "foods": [],
                 "supplements": [],
                 "query_type": "interaction_check",
+                "query_focus": "general",
                 "user_context": user_context or {},
                 "error": f"Failed to parse response: {str(e)}"
             }
@@ -134,6 +148,7 @@ class QueryInterpreter:
                 "foods": [],
                 "supplements": [],
                 "query_type": "interaction_check",
+                "query_focus": "general",
                 "user_context": user_context or {},
                 "error": f"Error interpreting query: {str(e)}"
             }
