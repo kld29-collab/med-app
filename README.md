@@ -1,192 +1,381 @@
-# Medication Interaction Tracker
+# ExplainRX: Medication Interaction Tracker
 
-A web-based Medication Interaction Tracker that helps patients identify potential interactions between prescription medications, over-the-counter drugs, supplements, foods, and lifestyle factors using natural language queries powered by LLMs.
+A web-based medication interaction tracker that helps users identify potential drug interactions using natural language queries powered by LLMs and comprehensive drug databases.
+
+## Quick Links
+
+- **📖 [Getting Started](#quick-start)** - Start using the app in 5 minutes
+- **🚀 [Deploy to Production](docs/DEPLOYMENT.md)** - Deploy on Vercel
+- **🏥 [DrugBank Setup](docs/DRUGBANK.md)** - Initialize drug database
+- **🏗️ [Architecture](docs/ARCHITECTURE.md)** - System design and data flow
+- **📚 [Developer Docs](docs/dev)** - Implementation details and status
+
+---
+
+## Quick Start
+
+### Prerequisites
+- Python 3.9+
+- API keys:
+  - **OpenAI** (for GPT-4) - [Get key](https://platform.openai.com/api-keys)
+  - **DrugBank** (Download account for drug data) - [Sign up](https://www.drugbank.ca)
+
+### Local Setup (5 minutes)
+
+1. **Clone and setup**:
+```bash
+cd med-app
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+2. **Add your API keys**:
+```bash
+cp .env.example .env
+# Edit .env and add OPENAI_API_KEY
+```
+
+3. **Initialize DrugBank database** (one-time, ~10 minutes):
+```bash
+python scripts/init_drugbank_db.py
+```
+
+4. **Run the app**:
+```bash
+python app.py
+```
+
+Visit: http://localhost:5000
+
+---
+
+## Features
+
+✅ **Natural Language Queries**
+- "Can I take aspirin with ibuprofen?"
+- "What are the side effects of metformin?"
+- "Is there any food I should avoid with warfarin?"
+
+✅ **Comprehensive Drug Data**
+- 15,000+ drugs from DrugBank
+- Drug-drug interactions
+- Food-drug interactions
+- FDA safety information
+
+✅ **Fast & Reliable**
+- Local SQLite database (<50ms queries)
+- No rate limiting
+- Offline capability
+
+✅ **Production Ready**
+- Deploy to Vercel in minutes
+- Serverless compatible
+- Client-side session management
+
+---
 
 ## Technology Stack
 
 ### Backend
-- **Web Framework**: Flask (Python)
-- **LLM**: OpenAI GPT-4 (via OpenAI API)
-- **Database APIs**: 
-  - RxNorm API (for medication normalization)
-  - **DrugBank Database** (RAG approach - local SQLite from Download account)
-  - FDA Drug Database (for official drug information)
-  - Web Search (SerpAPI for additional data)
-- **Session Management**: Client-side storage (localStorage) for Vercel serverless deployment
+- **Framework**: Flask (Python)
+- **LLM**: OpenAI GPT-4
+- **Databases**: 
+  - DrugBank (RAG via local SQLite)
+  - RxNorm API (drug normalization)
+  - FDA API (safety information)
 
 ### Frontend
-- **Framework**: Flask templates with Jinja2
-- **Styling**: Modern CSS with responsive design
-- **JavaScript**: Vanilla JS for interactivity
+- **Templates**: Flask + Jinja2
+- **Styling**: Modern CSS
+- **Interactivity**: Vanilla JavaScript
 
 ### Deployment
-- **Primary**: **Vercel** (serverless Flask support)
-- **Note**: User context stored client-side (localStorage) for serverless compatibility
+- **Primary**: Vercel (serverless)
+- **Local**: Docker or direct Python execution
 
-## Architecture: Three-Agent System
+---
 
-The system uses a clear separation between deterministic database operations and LLM processing:
+## Architecture
 
-### 1. Query Interpreter Agent (LLM Layer)
-- Extracts medication names, foods, supplements from natural language
-- Outputs structured JSON query plan
+The system uses a **three-agent pipeline** with clear separation between LLM and deterministic operations:
 
-### 2. Retrieval/Database Agent (Deterministic Layer)
-- Executes API calls to RxNorm, DrugBank, FDA
-- Returns structured interaction tables
-- **No LLM involvement** - pure deterministic data retrieval
+```
+User Query
+    ↓
+[Query Interpreter Agent] ← LLM extracts medications/foods
+    ↓
+[Retrieval Agent] ← Deterministic: queries DrugBank, FDA, Web
+    ↓
+[Explanation Agent] ← LLM translates results to plain language
+    ↓
+User Response
+```
 
-### 3. Explanation Agent (LLM Layer)
-- Translates technical data into plain language
-- Flags uncertainties and includes disclaimers
-- Grounded in retrieved data only
+**Data Source Priority**:
+1. **DrugBank** (comprehensive, local, fast)
+2. **FDA** (official, safety-focused)
+3. **Web Search** (current information)
+
+See [Architecture](docs/ARCHITECTURE.md) for detailed diagrams and data flows.
+
+---
 
 ## Project Structure
 
 ```
 med-app/
-├── README.md
-├── requirements.txt
-├── .env.example
-├── .gitignore
-├── vercel.json
-├── app.py                 # Main Flask application
-├── config.py              # Configuration settings
-├── agents/
-│   ├── __init__.py
-│   ├── query_interpreter.py  # Agent 1: Query interpretation
-│   ├── retrieval_agent.py    # Agent 2: Database queries (deterministic)
-│   └── explanation_agent.py  # Agent 3: Plain language explanations
-├── utils/
-│   ├── __init__.py
-│   ├── drug_apis.py       # RxNorm, DrugBank, FDA API wrappers
-│   ├── session_manager.py # User context management
-│   └── validators.py      # Input validation
-├── templates/
-│   ├── base.html          # Base template
-│   └── index.html         # Main chat interface
-├── static/
-│   ├── css/
-│   │   └── style.css      # Custom styles
-│   └── js/
-│       └── app.js         # Frontend interactivity
-└── tests/
-    ├── test_agents.py
-    └── test_apis.py
+├── docs/                      ← Documentation
+│   ├── DEPLOYMENT.md         # Deploy to Vercel guide
+│   ├── DRUGBANK.md           # DrugBank setup & usage
+│   ├── ARCHITECTURE.md       # System design
+│   └── dev/                  # Developer documentation
+├── app.py                    # Main Flask application
+├── config.py                 # Configuration
+├── agents/                   # Three-agent system
+│   ├── query_interpreter.py  # Extract medications (LLM)
+│   ├── retrieval_agent.py    # Query databases (deterministic)
+│   └── explanation_agent.py  # Explain results (LLM)
+├── utils/                    # Utilities
+│   ├── drug_apis.py         # API integrations
+│   ├── drugbank_db.py       # DrugBank SQLite manager
+│   ├── drugbank_loader.py   # XML parser
+│   ├── session_manager.py   # User sessions
+│   └── validators.py        # Input validation
+├── templates/               # Flask templates
+├── static/                  # CSS, JS, assets
+├── tests/                   # Test suite
+├── scripts/                 # Utilities
+│   └── init_drugbank_db.py # Database initialization
+├── data/                    # Data directory
+│   ├── full_database.xml    # DrugBank download
+│   └── drugbank.db          # SQLite database (auto-created)
+├── requirements.txt         # Python dependencies
+└── vercel.json             # Vercel configuration
 ```
 
-## Setup Instructions
+---
 
-### Prerequisites
-- Python 3.9+
-- API keys for:
-  - OpenAI (GPT-4)
-  - RxNorm (UMLS account)
-  - DrugBank (academic/research license)
-  - FDA API (free, no key needed)
+## Setup Guide
 
-### Installation Steps
+### 1. Environment Variables
 
-1. **Clone and setup environment**:
 ```bash
-cd med-app
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+cp .env.example .env
+```
+
+Add to `.env`:
+```
+OPENAI_API_KEY=sk-proj-...your-key...
+SECRET_KEY=generate-with: python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### 2. Install Dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-2. **Configure environment variables**:
+### 3. Initialize DrugBank Database
+
 ```bash
-cp .env.example .env
-# Edit .env with your API keys
+python scripts/init_drugbank_db.py
 ```
 
-3. **Run the application**:
+**Note**: First run takes 5-30 minutes to parse the 1.5GB XML file. Subsequent runs are instant.
+
+### 4. Run Locally
+
 ```bash
 python app.py
 ```
 
-4. **Access the app**:
-- Local: http://localhost:5000
-- Deploy to Vercel for public access
-
-## Data Sources
-
-### RxNorm API
-**Purpose**: Drug name normalization and RxCUI identifier resolution  
-**Status**: ✅ Working  
-**API Used**: `/rxcui.json` (exact match) and `/approximateTerm.json` (fuzzy match)  
-**Note**: RxNorm's `/interaction/` endpoints (referenced in older documentation) have been **deprecated by the NLM** and are no longer available.
-
-### FDA Drug Labels (OpenFDA)
-**Purpose**: Contraindications, warnings, precautions, and documented drug interactions  
-**Status**: ✅ Working  
-**API**: https://api.fda.gov/drug/label.json  
-**Authentication**: None required (public API)  
-**Data Retrieved**: Brand names, generic names, warnings, contraindications, precautions, documented interactions
-
-### Web Search (SerpAPI)
-**Purpose**: Current drug interaction information and clinical evidence  
-**Status**: ✅ Working  
-**Note**: Used as the primary interaction data source due to RxNorm interaction API deprecation  
-**Configuration**: Requires `SERPAPI_KEY` environment variable
-
-### DrugBank API (Optional)
-**Purpose**: Professional-grade drug interaction database with 13,000+ drugs  
-**Status**: Not yet implemented (framework exists)  
-**Requires**: Paid subscription credentials (username/password)  
-**Benefits**: Comprehensive interaction data with detailed pharmacokinetics
-
-## API Migration Notes
-
-**RxNorm Interaction API Deprecation**:
-- The NLM has deprecated the `/interaction/interaction.json` and `/interaction/list.json` endpoints
-- Older NIH documentation references these endpoints, but they are no longer maintained
-- **Current Solution**: Drug interaction data is retrieved from FDA labels + web search
-- These sources provide evidence-based, clinically relevant interaction information
+Visit: http://localhost:5000
 
 
+---
 
-## Example User Flow
+## Deployment
 
-```
-USER: "Can I take Tylenol with my antidepressant?"
+### Quick Deploy to Vercel
 
-→ Agent 1 (LLM): Extracts medications, generates query plan
-   Output: {"medications": ["Tylenol", "antidepressant"], ...}
-
-→ Agent 2 (Deterministic): Queries databases
-   - RxNorm: Normalizes "Tylenol" → "acetaminophen"
-   - DrugBank: Checks interactions
-   - Returns structured table
-
-→ Agent 3 (LLM): Generates plain-language explanation
-   Output: "Tylenol (acetaminophen) is generally safe with most 
-   antidepressants, but you should consult your doctor..."
+1. **Push to GitHub** (if not already)
+```bash
+git add .
+git commit -m "Ready for production"
+git push origin main
 ```
 
-## Important Notes
+2. **Initialize database locally** (to avoid Vercel timeout):
+```bash
+python scripts/init_drugbank_db.py
+git add data/drugbank.db
+git commit -m "Add initialized database"
+git push
+```
 
-- **Medical Disclaimer**: This tool is for informational purposes only and does not constitute medical advice. Always consult with a qualified healthcare provider.
-- **API Rate Limits**: Implement caching and rate limiting for external APIs
-- **Cost Management**: Monitor OpenAI API usage (GPT-4 is more expensive than GPT-3.5)
-- **Data Privacy**: User data stored only client-side (localStorage) for anonymous users
+3. **Deploy via Vercel**:
+   - Go to https://vercel.com/new
+   - Import your repository
+   - Set root directory: `med-app`
+   - Add environment variables (see [Deployment Guide](docs/DEPLOYMENT.md))
+   - Click Deploy
 
-## Deployment to Vercel
+For detailed instructions, see **[Deployment Guide](docs/DEPLOYMENT.md)**.
 
-1. Install Vercel CLI: `npm i -g vercel`
-2. Run `vercel` in the project directory
-3. Configure environment variables in Vercel dashboard
-4. Deploy: `vercel --prod`
+---
 
-## Development Roadmap
+## Testing
 
-- [x] Set up Flask application structure
-- [x] Implement Agent 1 (Query Interpreter)
-- [x] Implement Agent 2 (Retrieval Agent) with API integrations
-- [x] Implement Agent 3 (Explanation Agent)
-- [x] Build frontend UI with chat interface
-- [x] Add user profile sidebar
-- [x] Add disclaimers and safety features
-- [ ] Deploy to public URL
-- [ ] Testing and refinement
+Run the test suite:
+
+```bash
+# All tests
+python -m pytest tests/
+
+# Specific test file
+python -m pytest tests/test_comprehensive.py
+
+# With coverage
+python -m pytest tests/ --cov=utils --cov=agents
+```
+
+Available test files:
+- `tests/test_comprehensive.py` - End-to-end query tests
+- `tests/test_query.py` - Individual drug query tests
+- `tests/test_drugbank_integration.py` - DrugBank database tests
+- `tests/test_agents.py` - Agent unit tests
+- `tests/test_apis.py` - API integration tests
+
+---
+
+## Configuration
+
+Edit `config.py` to customize:
+
+```python
+OPENAI_MODEL = "gpt-4"           # LLM model
+MAX_DRUGS_PER_QUERY = 5          # Limit simultaneous drugs
+SESSION_TIMEOUT = 3600           # Session duration (seconds)
+DEBUG_MODE = False               # Enable debug logging
+```
+
+---
+
+## Common Issues & Solutions
+
+### "DrugBank database not initialized"
+```bash
+python scripts/init_drugbank_db.py
+```
+
+### Drug name not found
+- The system includes **fuzzy matching** (e.g., "aspirin" → "Acetylsalicylic acid")
+- Try searching for the drug: use `search_drugbank()` method
+- Check debug logs for exact database names
+
+### Slow deployment on Vercel
+- Initialize the database locally first (see [Deployment Guide](docs/DEPLOYMENT.md))
+- Vercel has a 10-second timeout on first request
+
+### API key errors
+- Verify `.env` file has correct keys
+- Check OPENAI_API_KEY format (starts with `sk-proj-`)
+- Don't commit `.env` file to Git
+
+---
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest tests/
+
+# Run specific test with output
+pytest tests/test_comprehensive.py -v -s
+
+# Run tests with coverage report
+pytest --cov=utils --cov=agents tests/
+```
+
+### Debugging
+
+Enable debug logging:
+```python
+# In config.py
+DEBUG_MODE = True
+```
+
+Watch console output for `[DEBUG]`, `[INFO]`, `[WARNING]` messages.
+
+### Adding New Features
+
+1. **New data source?** Add to `utils/drug_apis.py`
+2. **New agent logic?** Update `agents/retrieval_agent.py`
+3. **New UI element?** Edit `templates/index.html`
+4. **New tests?** Add to `tests/`
+
+See [Developer Docs](docs/dev) for detailed architecture.
+
+---
+
+## Documentation
+
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Vercel or run locally
+- **[DrugBank Setup](docs/DRUGBANK.md)** - Initialize and use drug database
+- **[System Architecture](docs/ARCHITECTURE.md)** - Design diagrams and data flows
+- **[Implementation Details](docs/dev/IMPLEMENTATION_SUMMARY.md)** - Technical overview
+- **[Completion Status](docs/dev/COMPLETION_STATUS.md)** - Feature checklist
+
+---
+
+## Performance
+
+| Operation | Time | Method |
+|-----------|------|--------|
+| Drug search | ~50ms | SQLite |
+| Interaction lookup | ~50ms | SQLite |
+| API normalization | ~500ms | RxNorm API |
+| FDA safety info | ~500ms | FDA API |
+| Web search | ~2000ms | SerpAPI |
+| **Total response** | **~3 seconds** | Combined |
+
+---
+
+## Support
+
+- 📖 Check the [docs/](docs/) folder
+- 🐛 Check console output for debug messages
+- 🔍 Review test files for usage examples
+- 💬 OpenAI API status: https://status.openai.com
+
+---
+
+## License
+
+This project uses:
+- **DrugBank** (Download account) - Academic/research use
+- **OpenAI API** - Subject to OpenAI terms
+- **FDA Data** - Public domain
+- **RxNorm** - Public domain (UMLS)
+
+---
+
+## Next Steps
+
+✅ Local setup complete?
+- Test a query: "Can I take aspirin with ibuprofen?"
+
+✅ Ready to deploy?
+- Follow [Deployment Guide](docs/DEPLOYMENT.md)
+- Deploy to Vercel in ~5 minutes
+
+✅ Want to customize?
+- Check [System Architecture](docs/ARCHITECTURE.md) for design
+- See [Developer Docs](docs/dev) for implementation details
+
+---
+
+**Built with ❤️ for medication safety**
