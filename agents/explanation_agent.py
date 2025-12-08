@@ -139,11 +139,11 @@ class ExplanationAgent:
         Normalized Medications:
         {json.dumps(normalized_medications, indent=2)}
 
-        Drug Interactions:
-        {json.dumps(interaction_table, indent=2) if interaction_table else "None found"}
-
-        Food Interactions (for each medication):
+        Food Interactions (MOST IMPORTANT - list of food/beverage interactions for each medication):
         {json.dumps(food_interactions, indent=2) if food_interactions else "None found"}
+
+        Drug Interactions (interactions between medications):
+        {json.dumps(interaction_table, indent=2) if interaction_table else "None found"}
 
         FDA Information:
         {json.dumps(fda_info, indent=2) if fda_info else "None"}
@@ -159,19 +159,19 @@ class ExplanationAgent:
 
         Generate a plain-language explanation based on this data. 
         
-        CRITICAL: Respect the query_focus field above.
-        - If query_focus="food": Only explain food/beverage interactions from the Food Interactions list
-        - If query_focus="drug_drug": Only explain drug-drug interactions from the Drug Interactions list
-        - If query_focus="supplement": Only explain supplement interactions from Food Interactions marked as supplements
-        - If query_focus="general": Explain all interactions found
-        
-        Do NOT generate explanations for interaction types that don't match the query focus.
+        CRITICAL INSTRUCTIONS:
+        1. Respect the query_focus field above - ONLY explain interactions matching the query_focus
+        2. If query_focus="food": Use ONLY the Food Interactions list above - explain ALL items in that list
+        3. If query_focus="drug_drug": Use ONLY the Drug Interactions list above
+        4. If query_focus="supplement": Use ONLY food interactions marked as supplements
+        5. If query_focus="general": Use all available interactions
         
         PRIORITY LOGIC:
-        - Use data from the appropriate interaction type based on query_focus
-        - Always use the actual interaction data provided (don't speculate)
-        - Synthesize multiple sources when available
-        - Include all relevant interactions found for the query_focus"""
+        - Look at the appropriate data source based on query_focus
+        - Include ALL relevant interactions found (don't skip any)
+        - Use the exact wording from the data when possible
+        - Synthesize when multiple sources exist
+        - Only say "no interactions found" if the list is actually empty"""
         
         try:
             response = self.client.chat.completions.create(
@@ -231,6 +231,7 @@ class ExplanationAgent:
             # Include raw source data for expandable panel
             explanation["raw_sources"] = {
                 "drugbank": interaction_table if interaction_table else [],
+                "food": food_interactions if food_interactions else [],
                 "fda": fda_info if fda_info else [],
                 "web": web_sources if web_sources else [],
                 "citations": citations if citations else []
