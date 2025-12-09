@@ -107,20 +107,58 @@ RESPOND WITH ONLY THIS JSON FORMAT (fill in actual content):
                 user_context_display = "\n\nUser context: " + "; ".join(context_items)
                 print(f"[DEBUG EXPLANATION] Built user context display: {user_context_display}", file=sys.stderr)
         
+        # Build FDA info display (concise format)
+        fda_info_display = ""
+        if fda_info:
+            fda_items = []
+            for item in fda_info:
+                drug_name = item.get('drug_name', 'Unknown')
+                warnings = item.get('warnings', [])
+                precautions = item.get('precautions', [])
+                contraindications = item.get('contraindications', [])
+                drug_interactions = item.get('drug_interactions', [])
+                
+                # Include warnings if available
+                if warnings:
+                    # Get first 150 chars of first warning
+                    warning_text = warnings[0][:150] if warnings[0] else ""
+                    if warning_text:
+                        fda_items.append(f"{drug_name}: {warning_text}...")
+                
+                # Include precautions if available
+                if precautions:
+                    # Get first 150 chars of precautions
+                    precaution_text = precautions[0][:150] if precautions[0] else ""
+                    if precaution_text:
+                        fda_items.append(f"{drug_name} precautions: {precaution_text}...")
+                
+                # Include drug interactions from FDA
+                if drug_interactions:
+                    for interaction in drug_interactions[:1]:  # Only include first
+                        interaction_text = interaction[:200] if interaction else ""
+                        if interaction_text:
+                            fda_items.append(f"{drug_name} interactions: {interaction_text}...")
+            
+            if fda_items:
+                fda_info_display = "\n\nFDA Drug Information:\n" + "\n".join(fda_items)
+        
         user_prompt = f"""Medications: {', '.join(m.get('name', m.get('original_name', '')) for m in normalized_medications)}
 Query focus: {query_focus}{user_context_display}
 
 Food interactions ({len(food_interactions)}): {food_interactions_display if food_interactions_display else '(none)'}
 
-Drug interactions ({len(interaction_table)}): {json.dumps(interaction_table[:2], indent=0) if interaction_table else '(empty - use web search below)'}
+Drug interactions ({len(interaction_table)}): {json.dumps(interaction_table[:3], indent=0) if interaction_table else '(empty - check FDA data below)'}
+
+{fda_info_display}
 
 Web results: {json.dumps(web_sources[:1], indent=0) if web_sources else '(none)'}
 
-{"Use web search results for drug interaction details" if len(interaction_table) == 0 and len(web_sources) > 0 else ""}
+{"Use web search results for additional drug interaction details" if len(interaction_table) == 0 and len(web_sources) > 0 else ""}
 
+IMPORTANT: Include ALL drug interactions mentioned in the data above, including those from FDA sources.
 Consider the user context (conditions, age, sex) when explaining interactions and providing recommendations.
 
-Explain interactions based on this data."""
+Explain all drug interactions based on this data."""
         
         print(f"[DEBUG EXPLANATION] User prompt being sent to model:\n{user_prompt}", file=sys.stderr)
         
