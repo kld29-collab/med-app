@@ -91,17 +91,40 @@ class RetrievalAgent:
             print(f"[DEBUG] Querying DrugBank database for interactions (PRIMARY)", file=sys.stderr)
             if normalized_names:
                 # FILTERING: Only retrieve drug-drug interactions if user is asking about them
-                # medication_safety = single drug + user conditions, skip drug-drug lookups
+                # medication_safety = single drug + user conditions, check against ALL user meds
                 # drug_drug = multiple drugs, do lookups
                 # general = unclear, do lookups
+                
+                drugbank_found = False
+                
                 if query_focus in ("drug_drug", "general") and len(normalized_names) > 1:
                     drugbank_interactions = self.api_client.get_drug_interactions_drugbank(normalized_names)
                     if drugbank_interactions:
                         print(f"[DEBUG] Found {len(drugbank_interactions)} interactions in DrugBank", file=sys.stderr)
                         results["drug_interactions"].extend(drugbank_interactions)
                         results["metadata"]["sources_queried"].append("DrugBank (Primary)")
+                        drugbank_found = True
                 elif query_focus == "medication_safety":
-                    print(f"[DEBUG] Skipping drug-drug interactions (query focused on medication safety for single drug)", file=sys.stderr)
+                    # For medication_safety queries with a single drug being queried,
+                    # check it against ALL of the user's current medications
+                    user_medications = query_plan.get("user_context", {}).get("medications", [])
+                    if user_medications and len(normalized_names) == 1:
+                        queried_drug = normalized_names[0]
+                        print(f"[DEBUG] Medication safety query - checking {queried_drug} against user's {len(user_medications)} current medications", file=sys.stderr)
+                        
+                        # Check each user medication against the queried drug
+                        for user_med in user_medications:
+                            if user_med.lower() != queried_drug.lower():  # Don't check drug against itself
+                                interactions = self.api_client.get_drug_interactions_drugbank([queried_drug, user_med])
+                                if interactions:
+                                    print(f"[DEBUG] Found interactions between {queried_drug} and {user_med}", file=sys.stderr)
+                                    results["drug_interactions"].extend(interactions)
+                                    drugbank_found = True
+                        
+                        if drugbank_found:
+                            results["metadata"]["sources_queried"].append("DrugBank (Current Medications Check)")
+                    else:
+                        print(f"[DEBUG] Skipping drug-drug interactions (query focused on medication safety for single drug)", file=sys.stderr)
                 else:
                     print(f"[DEBUG] Skipping drug-drug interactions (query focused on {query_focus})", file=sys.stderr)
                 
@@ -159,7 +182,23 @@ class RetrievalAgent:
                     results["web_sources"].extend(web_interactions)
                     results["metadata"]["sources_queried"].append("Web Search (Supplementary)")
             elif query_focus == "medication_safety":
-                print(f"[DEBUG] Skipping drug-drug web search (query focused on medication safety)", file=sys.stderr)
+                # For medication_safety queries, search for interactions with all user medications
+                import sys
+                user_medications = query_plan.get("user_context", {}).get("medications", [])
+                if user_medications and len(medications) == 1:
+                    queried_drug = medications[0]
+                    print(f"[DEBUG] Searching web for {queried_drug} interactions with user's medications", file=sys.stderr)
+                    for user_med in user_medications:
+                        if user_med.lower() != queried_drug.lower():
+                            search_query = f"{queried_drug} {user_med} interaction safety"
+                            web_results = self.api_client.search_drug_websites(search_query)
+                            if web_results:
+                                print(f"[DEBUG] Found web results for {queried_drug} + {user_med}", file=sys.stderr)
+                                results["web_sources"].extend(web_results)
+                    if results["web_sources"]:
+                        results["metadata"]["sources_queried"].append("Web Search (Current Med Interactions)")
+                else:
+                    print(f"[DEBUG] Skipping medication combination web search (medication_safety check)", file=sys.stderr)
             
             # Step 4: Additional web RAG search for additional context (general medication info)
             # For medication_safety queries, still search for general drug info and safety
