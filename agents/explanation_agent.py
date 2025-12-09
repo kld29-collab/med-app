@@ -25,7 +25,9 @@ class ExplanationAgent:
         """Initialize the explanation agent with OpenAI client."""
         print(f"[DEBUG] Initializing ExplanationAgent...", file=sys.stderr)
         self.client = initialize_openai_client("ExplanationAgent")
-        self.model = Config.OPENAI_MODEL
+        # Use GPT-3.5-turbo for explanations: 3.5x faster, 10x cheaper
+        # Still produces high-quality JSON explanations without rate limiting issues
+        self.model = "gpt-3.5-turbo"
     
     def generate_explanation(self, interaction_data: Dict, user_context: Dict = None) -> Dict:
         """
@@ -57,41 +59,17 @@ class ExplanationAgent:
         if food_interactions:
             print(f"[DEBUG EXPLANATION] First food interaction: {food_interactions[0]}", file=sys.stderr)
         
-        system_prompt = """You are a medical information translator. Your ONLY job is to explain 
-        the medication interaction data provided to you. Nothing more.
+        system_prompt = """You are a medical information translator. Explain medication interaction data clearly and concisely.
 
-        CRITICAL RULES (FOLLOW THESE EXACTLY):
-        1. ONLY explain the data provided - do not make up information
-        2. If food interactions data is provided AND query_focus="food": MUST explain the food interactions
-        3. Do NOT say "no interactions found" or "specific details were not provided" if you have interaction text/data
-        4. If the user asked about food (query_focus="food"): explain EVERY food interaction in the list
-        5. Use simple, clear language - avoid medical jargon
-        6. Always recommend consulting a healthcare provider
-        7. Extract severity from the description text:
-           - Look for keywords like "bleeding risk", "increase INR", "serious", "life-threatening" = HIGH
-           - Look for keywords like "interfere with", "reduce efficacy", "increase levels" = MODERATE
-           - Look for keywords like "may affect", "possible" = MILD
-           - If severity is unclear, use "unknown"
-        8. Each food interaction description contains the details - USE THEM in the explanation
-        
-        RESPONSE FORMAT: Return ONLY valid JSON in this exact structure:
-        {
-            "summary": "Brief 2-3 sentence summary of findings",
-            "interactions": [
-                {
-                    "items": ["food item name"],
-                    "type": "food-drug",
-                    "explanation": "What the interaction is based on the provided description",
-                    "severity": "high/moderate/mild/unknown",
-                    "recommendation": "What to do about this based on the provided description"
-                }
-            ],
-            "uncertainties": ["any uncertain or low-confidence information"],
-            "disclaimer": "Medical disclaimer",
-            "recommendation": "Overall recommendation"
-        }
-        
-        DO NOT DEVIATE FROM THIS FORMAT. Every description already contains the interaction details."""
+RULES:
+1. Only explain provided data - no fabrication
+2. Do NOT say "no data" or "details missing" if you have text to work with
+3. Use simple language, avoid jargon
+4. Severity: HIGH (bleeding, serious risk), MODERATE (interfere/reduce), MILD (may affect)
+5. Always recommend consulting a healthcare provider
+
+RESPOND WITH ONLY THIS JSON FORMAT:
+{"summary":"2-3 sentences","interactions":[{"items":["drug1","drug2"],"type":"drug-drug","explanation":"plain text","severity":"high/moderate/mild/unknown","recommendation":"action"}],"uncertainties":[],"disclaimer":"Medical disclaimer","recommendation":"Overall advice"}"""
         
         # Build food interactions display with better formatting
         food_interactions_display = ""
@@ -107,35 +85,18 @@ class ExplanationAgent:
                 description = str(interaction)
             food_interactions_display += f"\n{i}. {description}"
         
-        user_prompt = f"""INTERACTION DATA TO EXPLAIN:
+        user_prompt = f"""Medications: {', '.join(m.get('name', m.get('original_name', '')) for m in normalized_medications)}
+Query focus: {query_focus}
 
-User's Query Focus: {query_focus}
+Food interactions ({len(food_interactions)}): {food_interactions_display if food_interactions_display else '(none)'}
 
-Medications: {json.dumps(normalized_medications, indent=2)}
+Drug interactions ({len(interaction_table)}): {json.dumps(interaction_table[:2], indent=0) if interaction_table else '(empty - use web search below)'}
 
-FOOD/BEVERAGE INTERACTIONS ({len(food_interactions)} items found):{food_interactions_display}
+Web results: {json.dumps(web_sources[:1], indent=0) if web_sources else '(none)'}
 
-DRUG-DRUG INTERACTIONS ({len(interaction_table)} items found):
-{json.dumps(interaction_table, indent=2) if interaction_table else "(empty)"}
+{"Use web search results for drug interaction details" if len(interaction_table) == 0 and len(web_sources) > 0 else ""}
 
-FDA Information:
-{json.dumps(fda_info, indent=2) if fda_info else "(none)"}
-
-Web Search Results:
-{json.dumps(web_sources[:2], indent=2) if web_sources else "(none)"}
-
-YOUR TASK:
-1. Query focus is: {query_focus}
-2. Focus on: {"FOOD/BEVERAGE interactions ONLY" if query_focus == "food" else "DRUG-DRUG interactions ONLY" if query_focus == "drug_drug" else "all interactions"}
-3. You have {len(food_interactions)} food interactions provided above
-4. You have {len(interaction_table)} drug interactions to include if relevant
-5. For each food interaction, extract:
-   - Food/beverage name
-   - What the description says about the interaction
-   - Severity based on keywords (bleeding risk = HIGH, interfere with metabolism = MODERATE, etc)
-   - Recommendation from the description
-
-IMPORTANT: The interaction descriptions already contain all the details you need. Do NOT say "specific details were not provided" - they are provided in the descriptions above. Create one interaction object for each of the {len(food_interactions)} food interactions listed."""
+Explain interactions based on this data."""
         
         try:
             response = self.client.chat.completions.create(
@@ -144,7 +105,8 @@ IMPORTANT: The interaction descriptions already contain all the details you need
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.3  # Slightly higher for more natural language, but still controlled
+                temperature=0.2,  # Lower temperature for faster, more deterministic responses
+                max_tokens=1000  # Limit token generation to reduce latency
             )
             
             explanation = json.loads(response.choices[0].message.content)

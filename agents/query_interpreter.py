@@ -82,7 +82,8 @@ class QueryInterpreter:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.1  # Low temperature for consistent extraction
+                temperature=0.1,  # Low temperature for consistent extraction
+                max_tokens=500  # Limit tokens for faster response
             )
             
             result = json.loads(response.choices[0].message.content)
