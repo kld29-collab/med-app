@@ -67,13 +67,16 @@ RULES:
 1. Only explain provided data - no fabrication
 2. Do NOT say "no data" or "details missing" if you have text to work with
 3. Use simple language, avoid jargon
-4. Severity: HIGH (bleeding, serious risk), MODERATE (interfere/reduce), MILD (may affect)
+4. Severity: HIGH (bleeding, serious risk, contraindication), MODERATE (interfere/reduce), MILD (may affect)
 5. Always recommend consulting a healthcare provider
-6. CRITICAL: When user has health conditions mentioned (e.g., migraine, diabetes, hypertension), explicitly note ANY relevant medication concerns or contraindications related to those conditions
-7. Consider the user's sex - some medications have different risks for male vs female (e.g., hormonal birth control risks with migraines with aura)
+6. CRITICAL: When user has health conditions mentioned (e.g., migraine with aura, diabetes, hypertension), explicitly note ANY relevant medication concerns or contraindications related to those conditions
+7. Consider the user's sex - some medications have different risks for male vs female
+8. CONTRAINDICATION ALERT: Hormonal contraceptives (oral contraceptives, patches, rings, etc.) significantly increase stroke risk in women with migraine with aura - this is a documented serious contraindication
+9. When analyzing hormonal contraceptives in a woman with migraine with aura, flag this as a HIGH severity contraindication in the summary and recommendations
+10. For each medication, check if it interacts with the user's conditions or other medications in their profile
 
 RESPOND WITH ONLY THIS JSON FORMAT (fill in actual content):
-{"summary":"2-3 sentences","interactions":[{"items":["drug1","drug2"],"type":"drug-drug","explanation":"plain text","severity":"high/moderate/mild/unknown","recommendation":"specific action"}],"uncertainties":[],"disclaimer":"Educational disclaimer text","recommendation":"Specific advice based on data"}"""
+{"summary":"2-3 sentences with critical context","interactions":[{"items":["drug1","drug2"],"type":"drug-drug","explanation":"plain text","severity":"high/moderate/mild/unknown","recommendation":"specific action"}],"uncertainties":[],"disclaimer":"Educational disclaimer text","recommendation":"Specific advice based on data with critical health considerations"}"""
         
         # Build food interactions display with better formatting
         food_interactions_display = ""
@@ -89,8 +92,9 @@ RESPOND WITH ONLY THIS JSON FORMAT (fill in actual content):
                 description = str(interaction)
             food_interactions_display += f"\n{i}. {description}"
         
-        # Build user context info for prompt
+        # Build user context info for prompt - MAKE IT PROMINENT
         user_context_display = ""
+        critical_conditions = []
         if user_context:
             context_items = []
             if user_context.get('age'):
@@ -103,8 +107,16 @@ RESPOND WITH ONLY THIS JSON FORMAT (fill in actual content):
                 conditions = user_context['conditions']
                 if isinstance(conditions, list) and conditions:
                     context_items.append(f"Health conditions: {', '.join(conditions)}")
+                    # Track critical conditions that affect medication safety
+                    conditions_lower = [c.lower() for c in conditions]
+                    if any('migraine' in c and 'aura' in c for c in conditions_lower):
+                        critical_conditions.append("MIGRAINE WITH AURA - CONTRAINDICATION ALERT FOR HORMONAL CONTRACEPTIVES")
+            
             if context_items:
-                user_context_display = "\n\nUser context: " + "; ".join(context_items)
+                # Format context prominently
+                user_context_display = "\n\n*** PATIENT CONTEXT ***\n" + "\n".join(context_items)
+                if critical_conditions:
+                    user_context_display += "\n\n⚠️ CRITICAL CONDITIONS:\n" + "\n".join(f"- {c}" for c in critical_conditions)
                 print(f"[DEBUG EXPLANATION] Built user context display: {user_context_display}", file=sys.stderr)
         
         # Build FDA info display (concise format)
@@ -142,7 +154,24 @@ RESPOND WITH ONLY THIS JSON FORMAT (fill in actual content):
             if fda_items:
                 fda_info_display = "\n\nFDA Drug Information:\n" + "\n".join(fda_items)
         
-        user_prompt = f"""Medications: {', '.join(m.get('name', m.get('original_name', '')) for m in normalized_medications)}
+        # Build appropriate prompt based on query focus
+        if query_focus == "medication_safety":
+            # For medication safety queries, emphasize safety and contraindications
+            user_prompt = f"""Single Medication Safety Check:
+Medication: {', '.join(m.get('name', m.get('original_name', '')) for m in normalized_medications)}{user_context_display}
+
+{fda_info_display if fda_info_display else ""}
+
+Web results: {json.dumps(web_sources[:2], indent=0) if web_sources else "(none)"}
+
+CRITICAL: Analyze whether this medication is SAFE or has CONTRAINDICATIONS for the user's health conditions.
+Focus on: Is this medication safe for this patient given their conditions and characteristics?
+Include any warnings, precautions, or contraindications relevant to this patient's profile.
+
+Provide a clear safety assessment based on FDA data and available information."""
+        else:
+            # For multi-drug or general queries
+            user_prompt = f"""Medications: {', '.join(m.get('name', m.get('original_name', '')) for m in normalized_medications)}
 Query focus: {query_focus}{user_context_display}
 
 Food interactions ({len(food_interactions)}): {food_interactions_display if food_interactions_display else '(none)'}

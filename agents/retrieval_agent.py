@@ -91,13 +91,17 @@ class RetrievalAgent:
             print(f"[DEBUG] Querying DrugBank database for interactions (PRIMARY)", file=sys.stderr)
             if normalized_names:
                 # FILTERING: Only retrieve drug-drug interactions if user is asking about them
-                # If user is asking about food/supplement interactions, skip drug-drug
-                if query_focus in ("drug_drug", "general"):
+                # medication_safety = single drug + user conditions, skip drug-drug lookups
+                # drug_drug = multiple drugs, do lookups
+                # general = unclear, do lookups
+                if query_focus in ("drug_drug", "general") and len(normalized_names) > 1:
                     drugbank_interactions = self.api_client.get_drug_interactions_drugbank(normalized_names)
                     if drugbank_interactions:
                         print(f"[DEBUG] Found {len(drugbank_interactions)} interactions in DrugBank", file=sys.stderr)
                         results["drug_interactions"].extend(drugbank_interactions)
                         results["metadata"]["sources_queried"].append("DrugBank (Primary)")
+                elif query_focus == "medication_safety":
+                    print(f"[DEBUG] Skipping drug-drug interactions (query focused on medication safety for single drug)", file=sys.stderr)
                 else:
                     print(f"[DEBUG] Skipping drug-drug interactions (query focused on {query_focus})", file=sys.stderr)
                 
@@ -154,11 +158,19 @@ class RetrievalAgent:
                     print(f"[DEBUG] Found {len(web_interactions)} supplementary web results", file=sys.stderr)
                     results["web_sources"].extend(web_interactions)
                     results["metadata"]["sources_queried"].append("Web Search (Supplementary)")
+            elif query_focus == "medication_safety":
+                print(f"[DEBUG] Skipping drug-drug web search (query focused on medication safety)", file=sys.stderr)
             
-            # Step 4: Additional web RAG search for additional context
+            # Step 4: Additional web RAG search for additional context (general medication info)
+            # For medication_safety queries, still search for general drug info and safety
             web_queried = False
             for med_name in medications:
-                web_results = self.api_client.search_drug_websites(med_name)
+                if query_focus == "medication_safety":
+                    # For safety checks, search for safety and contraindication info
+                    safety_search_query = f"{med_name} safety contraindications warnings"
+                    web_results = self.api_client.search_drug_websites(safety_search_query)
+                else:
+                    web_results = self.api_client.search_drug_websites(med_name)
                 if web_results:
                     results["web_sources"].extend(web_results)
                     web_queried = True

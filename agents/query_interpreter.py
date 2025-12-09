@@ -41,12 +41,13 @@ class QueryInterpreter:
         - medications: List of all medications mentioned (both prescription and OTC)
         - foods: List of foods or beverages mentioned
         - supplements: List of supplements or vitamins mentioned
-        - query_type: Type of query (e.g., "interaction_check", "food_interaction", "supplement_interaction", "drug_drug_interaction")
+        - query_type: Type of query (e.g., "interaction_check", "safety_check", "food_interaction", "supplement_interaction")
         - query_focus: What the user is specifically asking about:
+            * "medication_safety" if asking if a single medication is safe (especially with health conditions)
             * "food" if asking about a specific food/beverage with medications
             * "supplement" if asking about a specific supplement with medications
-            * "drug_drug" if asking about interactions between medications
-            * "general" if not clear or general information requested
+            * "drug_drug" if asking about interactions between 2+ medications
+            * "general" if asking for general medication information
         - user_context: Any relevant user information from the query (age, weight, conditions mentioned)
 
         Return ONLY valid JSON in this exact format:
@@ -55,17 +56,18 @@ class QueryInterpreter:
             "foods": ["food1"],
             "supplements": ["supplement1"],
             "query_type": "interaction_check",
-            "query_focus": "food",
+            "query_focus": "medication_safety",
             "user_context": {}
         }
 
         If information is not mentioned, use empty lists or empty objects. Be precise and only extract 
         what is explicitly stated or clearly implied.
         
-        IMPORTANT: Set query_focus based on what the user is specifically asking about:
+        IMPORTANT: Set query_focus correctly:
+        - If user asks "Can I take [single drug]?" OR "Is [drug] safe for me?": set to "medication_safety"
         - If user mentions a specific food/beverage (grapefruit, alcohol, etc): set to "food"
         - If user mentions a specific supplement: set to "supplement"
-        - If user is asking about their medications together: set to "drug_drug"
+        - If user is asking about 2+ medications together: set to "drug_drug"
         - Otherwise: set to "general"
         """
         
