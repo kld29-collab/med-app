@@ -43,6 +43,8 @@ class ExplanationAgent:
         if user_context is None:
             user_context = {}
         
+        # DEBUG: Log received user context
+        print(f"[DEBUG EXPLANATION] User context received: {user_context}", file=sys.stderr)
         # Get interaction data - retrieval agent returns "drug_interactions" not "interaction_table"
         interaction_table = interaction_data.get("drug_interactions", interaction_data.get("interaction_table", []))
         normalized_medications = interaction_data.get("normalized_medications", [])
@@ -59,7 +61,7 @@ class ExplanationAgent:
         if food_interactions:
             print(f"[DEBUG EXPLANATION] First food interaction: {food_interactions[0]}", file=sys.stderr)
         
-        system_prompt = """You are a medical information translator. Explain medication interaction data clearly and concisely.
+        system_prompt = """You are a medical information translator. Explain medication interaction data clearly and concisely, considering user health context.
 
 RULES:
 1. Only explain provided data - no fabrication
@@ -67,6 +69,8 @@ RULES:
 3. Use simple language, avoid jargon
 4. Severity: HIGH (bleeding, serious risk), MODERATE (interfere/reduce), MILD (may affect)
 5. Always recommend consulting a healthcare provider
+6. CRITICAL: When user has health conditions mentioned (e.g., migraine, diabetes, hypertension), explicitly note ANY relevant medication concerns or contraindications related to those conditions
+7. Consider the user's sex - some medications have different risks for male vs female (e.g., hormonal birth control risks with migraines with aura)
 
 RESPOND WITH ONLY THIS JSON FORMAT (fill in actual content):
 {"summary":"2-3 sentences","interactions":[{"items":["drug1","drug2"],"type":"drug-drug","explanation":"plain text","severity":"high/moderate/mild/unknown","recommendation":"specific action"}],"uncertainties":[],"disclaimer":"Educational disclaimer text","recommendation":"Specific advice based on data"}"""
@@ -85,8 +89,26 @@ RESPOND WITH ONLY THIS JSON FORMAT (fill in actual content):
                 description = str(interaction)
             food_interactions_display += f"\n{i}. {description}"
         
+        # Build user context info for prompt
+        user_context_display = ""
+        if user_context:
+            context_items = []
+            if user_context.get('age'):
+                context_items.append(f"Age: {user_context['age']}")
+            if user_context.get('sex'):
+                context_items.append(f"Sex: {user_context['sex']}")
+            if user_context.get('weight'):
+                context_items.append(f"Weight: {user_context['weight']} lbs")
+            if user_context.get('conditions'):
+                conditions = user_context['conditions']
+                if isinstance(conditions, list) and conditions:
+                    context_items.append(f"Health conditions: {', '.join(conditions)}")
+            if context_items:
+                user_context_display = "\n\nUser context: " + "; ".join(context_items)
+                print(f"[DEBUG EXPLANATION] Built user context display: {user_context_display}", file=sys.stderr)
+        
         user_prompt = f"""Medications: {', '.join(m.get('name', m.get('original_name', '')) for m in normalized_medications)}
-Query focus: {query_focus}
+Query focus: {query_focus}{user_context_display}
 
 Food interactions ({len(food_interactions)}): {food_interactions_display if food_interactions_display else '(none)'}
 
@@ -96,7 +118,11 @@ Web results: {json.dumps(web_sources[:1], indent=0) if web_sources else '(none)'
 
 {"Use web search results for drug interaction details" if len(interaction_table) == 0 and len(web_sources) > 0 else ""}
 
+Consider the user context (conditions, age, sex) when explaining interactions and providing recommendations.
+
 Explain interactions based on this data."""
+        
+        print(f"[DEBUG EXPLANATION] User prompt being sent to model:\n{user_prompt}", file=sys.stderr)
         
         try:
             response = self.client.chat.completions.create(

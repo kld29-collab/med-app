@@ -407,6 +407,7 @@ function createSourcesPanel(explanationData) {
 function loadUserContext() {
     // Load from localStorage
     if (userContext.age) document.getElementById('age').value = userContext.age;
+    if (userContext.sex) document.getElementById('sex').value = userContext.sex;
     if (userContext.weight) document.getElementById('weight').value = userContext.weight;
     if (userContext.height) document.getElementById('height').value = userContext.height;
     if (userContext.medications) {
@@ -420,6 +421,7 @@ function loadUserContext() {
 function getUserContext() {
     return {
         age: userContext.age || null,
+        sex: userContext.sex || null,
         weight: userContext.weight || null,
         height: userContext.height || null,
         medications: userContext.medications || [],
@@ -429,6 +431,7 @@ function getUserContext() {
 
 async function saveProfile() {
     const age = document.getElementById('age').value;
+    const sex = document.getElementById('sex').value;
     const weight = document.getElementById('weight').value;
     const height = document.getElementById('height').value;
     const medications = document.getElementById('medications').value
@@ -442,6 +445,7 @@ async function saveProfile() {
     
     const context = {
         age: age ? parseInt(age) : null,
+        sex: sex || null,
         weight: weight ? parseFloat(weight) : null,
         height: height ? parseFloat(height) : null,
         medications: medications,

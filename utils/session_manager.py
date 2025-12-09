@@ -16,6 +16,7 @@ def get_default_user_context() -> Dict:
     """
     return {
         'age': None,
+        'sex': None,
         'weight': None,
         'height': None,
         'medications': [],
