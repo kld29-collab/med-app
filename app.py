@@ -123,6 +123,9 @@ def handle_query():
         # Default to empty context if not provided
         user_context = data.get('user_context') or get_default_user_context()
         
+        # Get conversation history for context-aware recommendations
+        conversation_history = data.get('conversation_history', [])
+        
         # ============ ATTEMPT 1: QUERY CACHE HIT ============
         # If exact query was asked before with same user context, return cached explanation
         cached_result = cache.get_cached_explanation(user_query, user_context)
@@ -186,7 +189,8 @@ def handle_query():
         try:
             explanation = ea.generate_explanation(
                 interaction_data, 
-                user_context
+                user_context,
+                conversation_history=conversation_history
             )
         except Exception as e:
             print(f"[ERROR] Explanation generation failed: {str(e)}")

@@ -29,19 +29,22 @@ class ExplanationAgent:
         # Still produces high-quality JSON explanations without rate limiting issues
         self.model = "gpt-3.5-turbo"
     
-    def generate_explanation(self, interaction_data: Dict, user_context: Dict = None) -> Dict:
+    def generate_explanation(self, interaction_data: Dict, user_context: Dict = None, conversation_history: List = None) -> Dict:
         """
         Generate plain-language explanation from interaction data.
         
         Args:
             interaction_data: Structured interaction data from Retrieval Agent
             user_context: Optional user context (age, weight, height, conditions)
+            conversation_history: Optional conversation history for context-aware recommendations
         
         Returns:
             Dictionary with user-facing explanation and metadata
         """
         if user_context is None:
             user_context = {}
+        if conversation_history is None:
+            conversation_history = []
         
         # DEBUG: Log received user context
         print(f"[DEBUG EXPLANATION] User context received: {user_context}", file=sys.stderr)
@@ -74,6 +77,9 @@ RULES:
 8. CONTRAINDICATION ALERT: Hormonal contraceptives (oral contraceptives, patches, rings, etc.) significantly increase stroke risk in women with migraine with aura - this is a documented serious contraindication
 9. When analyzing hormonal contraceptives in a woman with migraine with aura, flag this as a HIGH severity contraindication in the summary and recommendations
 10. For each medication, check if it interacts with the user's conditions or other medications in their profile
+11. IF THE MEDICATION IS UNSAFE OR HAS HIGH SEVERITY ISSUES: Proactively suggest safe alternatives in your recommendation. For example: "Since aspirin increases bleeding risk with warfarin, consider acetaminophen for pain relief instead" or "For fever reduction while on warfarin, try acetaminophen (Tylenol) instead of NSAIDs"
+12. When suggesting alternatives, base them on common medical practice and what you know about drug safety
+13. If previous queries in this conversation showed unsafe options, acknowledge that context (e.g., "Since NSAIDs aren't safe for you, here's what you can take instead")
 
 RESPOND WITH ONLY THIS JSON FORMAT (fill in actual content):
 {"summary":"2-3 sentences with critical context","interactions":[{"items":["drug1","drug2"],"type":"drug-drug","explanation":"plain text","severity":"high/moderate/mild/unknown","recommendation":"specific action"}],"uncertainties":[],"disclaimer":"Educational disclaimer text","recommendation":"Specific advice based on data with critical health considerations"}"""
@@ -154,11 +160,34 @@ RESPOND WITH ONLY THIS JSON FORMAT (fill in actual content):
             if fda_items:
                 fda_info_display = "\n\nFDA Drug Information:\n" + "\n".join(fda_items)
         
+        # Build conversation context for alternative recommendations
+        conversation_context = ""
+        if conversation_history:
+            print(f"[DEBUG EXPLANATION] Conversation history available: {len(conversation_history)} messages", file=sys.stderr)
+            unsafe_drugs = []
+            for item in conversation_history:
+                if item.get('severity_found'):
+                    # Extract drug name from query if possible
+                    query_text = item.get('query', '').lower()
+                    if 'can i take' in query_text or 'can i use' in query_text:
+                        # Try to extract drug name
+                        parts = query_text.split()
+                        for i, word in enumerate(parts):
+                            if word in ['take', 'use'] and i + 1 < len(parts):
+                                drug = parts[i + 1].rstrip('?')
+                                if drug and len(drug) > 2:
+                                    unsafe_drugs.append(drug)
+                                    break
+            
+            if unsafe_drugs:
+                conversation_context = f"\n\nPREVIOUS CONVERSATION CONTEXT:\nThe user has already been warned that these are unsafe: {', '.join(unsafe_drugs)}\nIf the current query is asking about alternatives, take this into account and suggest safe substitutes."
+                print(f"[DEBUG EXPLANATION] Built conversation context with unsafe drugs: {unsafe_drugs}", file=sys.stderr)
+        
         # Build appropriate prompt based on query focus
         if query_focus == "medication_safety":
             # For medication safety queries, emphasize safety and contraindications
             user_prompt = f"""Single Medication Safety Check:
-Medication: {', '.join(m.get('name', m.get('original_name', '')) for m in normalized_medications)}{user_context_display}
+Medication: {', '.join(m.get('name', m.get('original_name', '')) for m in normalized_medications)}{user_context_display}{conversation_context}
 
 {fda_info_display if fda_info_display else ""}
 
@@ -168,11 +197,14 @@ CRITICAL: Analyze whether this medication is SAFE or has CONTRAINDICATIONS for t
 Focus on: Is this medication safe for this patient given their conditions and characteristics?
 Include any warnings, precautions, or contraindications relevant to this patient's profile.
 
+IF THIS MEDICATION IS UNSAFE: Suggest safe alternatives the user could take instead.
+For example: "Since this is unsafe due to bleeding risk, you could try [alternative] instead for the same effect"
+
 Provide a clear safety assessment based on FDA data and available information."""
         else:
             # For multi-drug or general queries
             user_prompt = f"""Medications: {', '.join(m.get('name', m.get('original_name', '')) for m in normalized_medications)}
-Query focus: {query_focus}{user_context_display}
+Query focus: {query_focus}{user_context_display}{conversation_context}
 
 Food interactions ({len(food_interactions)}): {food_interactions_display if food_interactions_display else '(none)'}
 
@@ -186,6 +218,8 @@ Web results: {json.dumps(web_sources[:1], indent=0) if web_sources else '(none)'
 
 IMPORTANT: Include ALL drug interactions mentioned in the data above, including those from FDA sources.
 Consider the user context (conditions, age, sex) when explaining interactions and providing recommendations.
+
+IF ANY INTERACTIONS ARE HIGH SEVERITY: Suggest safe alternatives the user could use instead.
 
 Explain all drug interactions based on this data."""
         

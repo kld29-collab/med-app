@@ -27,6 +27,18 @@ let userContext = (function() {
     }
 })();
 
+// Conversation history (client-side for context-aware recommendations)
+let conversationHistory = (function() {
+    try {
+        const stored = localStorage.getItem('conversationHistory');
+        return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        console.warn('Failed to parse conversation history:', e);
+        localStorage.removeItem('conversationHistory');
+        return [];
+    }
+})()
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     loadUserContext();
@@ -97,9 +109,9 @@ async function handleSubmit(e) {
         // Get user context (from localStorage for Vercel compatibility)
         const context = getUserContext();
         
-        console.log('Sending query to /api/query:', { query, context });
+        console.log('Sending query to /api/query:', { query, context, historyLength: conversationHistory.length });
         
-        // Send query to backend
+        // Send query to backend with conversation history for context-aware recommendations
         const response = await fetch('/api/query', {
             method: 'POST',
             headers: {
@@ -107,7 +119,8 @@ async function handleSubmit(e) {
             },
             body: JSON.stringify({
                 query: query,
-                user_context: context
+                user_context: context,
+                conversation_history: conversationHistory
             })
         });
         
@@ -126,6 +139,22 @@ async function handleSubmit(e) {
             // Pass full explanation object to display with sources
             const formatted = formatExplanationWithSources(data.explanation);
             addMessage(formatted, 'bot', false, data.explanation);
+            
+            // Track conversation for future context-aware recommendations
+            conversationHistory.push({
+                query: query,
+                response_summary: data.explanation.summary,
+                severity_found: data.explanation.interactions?.some(i => ['high', 'moderate'].includes(i.severity.toLowerCase())),
+                timestamp: new Date().toISOString()
+            });
+            
+            // Keep last 10 exchanges for context (to avoid exceeding token limits)
+            if (conversationHistory.length > 10) {
+                conversationHistory.shift();
+            }
+            
+            // Save to localStorage
+            localStorage.setItem('conversationHistory', JSON.stringify(conversationHistory));
         } else {
             addMessage('I received your query but could not generate a response. Please try again.', 'bot');
         }
@@ -496,6 +525,10 @@ async function clearProfile() {
     // Clear storage
     userContext = {};
     localStorage.removeItem('userContext');
+    
+    // Also clear conversation history when profile is reset
+    conversationHistory = [];
+    localStorage.removeItem('conversationHistory');
     
     try {
         // Clear on backend (returns default empty context)
