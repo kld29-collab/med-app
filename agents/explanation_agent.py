@@ -164,30 +164,82 @@ RESPOND WITH ONLY THIS JSON FORMAT (fill in actual content):
         conversation_context = ""
         if conversation_history:
             print(f"[DEBUG EXPLANATION] Conversation history available: {len(conversation_history)} messages", file=sys.stderr)
-            unsafe_drugs = []
-            for item in conversation_history:
-                if item.get('severity_found'):
-                    # Extract drug name from query if possible
-                    query_text = item.get('query', '').lower()
-                    if 'can i take' in query_text or 'can i use' in query_text:
-                        # Try to extract drug name
-                        parts = query_text.split()
-                        for i, word in enumerate(parts):
-                            if word in ['take', 'use'] and i + 1 < len(parts):
-                                drug = parts[i + 1].rstrip('?')
-                                if drug and len(drug) > 2:
-                                    unsafe_drugs.append(drug)
-                                    break
             
-            if unsafe_drugs:
-                conversation_context = f"\n\nPREVIOUS CONVERSATION CONTEXT:\nThe user has already been warned that these are unsafe: {', '.join(unsafe_drugs)}\nIf the current query is asking about alternatives, take this into account and suggest safe substitutes."
-                print(f"[DEBUG EXPLANATION] Built conversation context with unsafe drugs: {unsafe_drugs}", file=sys.stderr)
+            # Check if current query is asking for alternatives
+            original_query = interaction_data.get("original_query", "").lower()
+            is_asking_for_alternatives = any(phrase in original_query for phrase in [
+                "what painkiller", "what pain reliever", "what medicine", "what drug", 
+                "safer alternative", "better option", "instead of", "other than",
+                "safer option", "different medication"
+            ])
+            
+            print(f"[DEBUG EXPLANATION] Original query: '{original_query}'", file=sys.stderr)
+            print(f"[DEBUG EXPLANATION] Is asking for alternatives: {is_asking_for_alternatives}", file=sys.stderr)
+            
+            unsafe_drugs = []
+            high_severity_interactions = []
+            
+            for item in conversation_history:
+                query_text = item.get('query', '').lower()
+                severity = item.get('severity_found', False)
+                
+                # Extract medications from "Can I take X?" queries
+                if 'can i take' in query_text or 'can i use' in query_text or 'can i' in query_text:
+                    parts = query_text.split()
+                    for i, word in enumerate(parts):
+                        if word in ['take', 'use'] and i + 1 < len(parts):
+                            drug = parts[i + 1].rstrip('?')
+                            if drug and len(drug) > 2:
+                                unsafe_drugs.append(drug)
+                                if severity:
+                                    high_severity_interactions.append(drug)
+                                break
+                
+                # If they asked about this explicitly, track it
+                if severity:
+                    print(f"[DEBUG EXPLANATION] Previous query marked as having severity: {query_text}", file=sys.stderr)
+            
+            # Build context string
+            if is_asking_for_alternatives and (unsafe_drugs or high_severity_interactions):
+                context_drugs = high_severity_interactions if high_severity_interactions else unsafe_drugs
+                drug_list = ", ".join(context_drugs)
+                conversation_context = f"""\n\nPREVIOUS CONVERSATION CONTEXT:
+The user previously asked about: {drug_list}
+Those medications were flagged as having significant safety concerns.
+Since the user is now asking about safer alternatives, recommend medications that avoid the problems identified earlier.
+CRITICAL: If they asked about painkillers, suggest acetaminophen (Tylenol) as a safer alternative to NSAIDs, especially when on blood thinners like warfarin.
+CRITICAL: If they asked about other drug classes, suggest alternatives that don't have the identified interaction issues."""
+                print(f"[DEBUG EXPLANATION] Built conversation context for alternatives with drugs: {drug_list}", file=sys.stderr)
+            elif unsafe_drugs:
+                drug_list = ", ".join(unsafe_drugs)
+                conversation_context = f"\n\nPREVIOUS CONVERSATION CONTEXT:\nThe user has previously asked about: {drug_list}"
+                print(f"[DEBUG EXPLANATION] Built conversation context with previous queries: {drug_list}", file=sys.stderr)
         
         # Build appropriate prompt based on query focus
         if query_focus == "medication_safety":
             # For medication safety queries, emphasize safety and contraindications
-            user_prompt = f"""Single Medication Safety Check:
-Medication: {', '.join(m.get('name', m.get('original_name', '')) for m in normalized_medications)}{user_context_display}{conversation_context}
+            # Check if this is an alternative question with no specific medication
+            medications_to_analyze = normalized_medications if normalized_medications else []
+            
+            if not medications_to_analyze and conversation_context and "painkiller" in original_query.lower():
+                # User is asking "What painkiller would be safer?" - provide alternatives directly
+                user_prompt = f"""Medication Alternatives Recommendation:
+User is asking about safer painkiller options{user_context_display}{conversation_context}
+
+{fda_info_display if fda_info_display else ""}
+
+CRITICAL TASK: Recommend safe pain relief alternatives.
+The user is on Warfarin (blood thinner) and possibly other medications.
+Based on the previous conversation context about unsafe NSAIDs:
+- Acetaminophen (Tylenol) is generally SAFE with Warfarin for pain relief
+- NSAIDs like Ibuprofen, Advil, Motrin should be AVOIDED due to bleeding risk
+- Other options may include topical pain relievers or prescription alternatives
+
+Provide specific, actionable recommendations for safer pain management given the user's current medications."""
+            else:
+                # Standard medication safety check
+                user_prompt = f"""Single Medication Safety Check:
+Medication: {', '.join(m.get('name', m.get('original_name', '')) for m in medications_to_analyze) if medications_to_analyze else 'General safety question'}{user_context_display}{conversation_context}
 
 {fda_info_display if fda_info_display else ""}
 

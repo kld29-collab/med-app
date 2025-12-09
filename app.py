@@ -178,6 +178,8 @@ def handle_query():
         # Agent 2: Retrieval Agent (Deterministic Layer)
         try:
             interaction_data = ra.retrieve_interactions(query_plan)
+            # Pass original query for conversation context detection
+            interaction_data["original_query"] = user_query
         except Exception as e:
             print(f"[ERROR] Retrieval failed: {str(e)}")
             return jsonify({
