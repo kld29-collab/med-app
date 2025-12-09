@@ -108,13 +108,42 @@ class RetrievalAgent:
                     # For medication_safety queries with a single drug being queried,
                     # check it against ALL of the user's current medications
                     user_medications = query_plan.get("user_context", {}).get("medications", [])
-                    if user_medications and len(normalized_names) == 1:
-                        queried_drug = normalized_names[0]
-                        print(f"[DEBUG] Medication safety query - checking {queried_drug} against user's {len(user_medications)} current medications", file=sys.stderr)
+                    
+                    # Determine which medications were explicitly queried vs from user's profile
+                    # If we have more normalized meds than expected from query, some are from user_context
+                    user_med_names_lower = [med.lower() for med in user_medications] if user_medications else []
+                    queried_drugs = [
+                        med for med in normalized_names 
+                        if med.lower() not in user_med_names_lower
+                    ]
+                    
+                    print(f"[DEBUG] Medication safety query - normalized_names: {normalized_names}", file=sys.stderr)
+                    print(f"[DEBUG] User medications: {user_medications}", file=sys.stderr)
+                    print(f"[DEBUG] Queried drugs (not in user profile): {queried_drugs}", file=sys.stderr)
+                    
+                    # If we found medications that are NOT in the user's profile, those are what they're asking about
+                    if queried_drugs and user_medications:
+                        for queried_drug in queried_drugs:
+                            print(f"[DEBUG] Medication safety query - checking {queried_drug} against user's {len(user_medications)} current medications", file=sys.stderr)
+                            
+                            # Check each user medication against the queried drug
+                            for user_med in user_medications:
+                                if user_med.lower() != queried_drug.lower():  # Don't check drug against itself
+                                    interactions = self.api_client.get_drug_interactions_drugbank([queried_drug, user_med])
+                                    if interactions:
+                                        print(f"[DEBUG] Found interactions between {queried_drug} and {user_med}", file=sys.stderr)
+                                        results["drug_interactions"].extend(interactions)
+                                        drugbank_found = True
                         
-                        # Check each user medication against the queried drug
+                        if drugbank_found:
+                            results["metadata"]["sources_queried"].append("DrugBank (Current Medications Check)")
+                    elif len(normalized_names) == 1 and user_medications:
+                        # Only one medication and it's in the query (not from profile)
+                        queried_drug = normalized_names[0]
+                        print(f"[DEBUG] Single medication safety query - checking {queried_drug} against user's {len(user_medications)} current medications", file=sys.stderr)
+                        
                         for user_med in user_medications:
-                            if user_med.lower() != queried_drug.lower():  # Don't check drug against itself
+                            if user_med.lower() != queried_drug.lower():
                                 interactions = self.api_client.get_drug_interactions_drugbank([queried_drug, user_med])
                                 if interactions:
                                     print(f"[DEBUG] Found interactions between {queried_drug} and {user_med}", file=sys.stderr)
@@ -185,7 +214,28 @@ class RetrievalAgent:
                 # For medication_safety queries, search for interactions with all user medications
                 import sys
                 user_medications = query_plan.get("user_context", {}).get("medications", [])
-                if user_medications and len(medications) == 1:
+                
+                # Determine which medications were explicitly queried vs from user's profile
+                user_med_names_lower = [med.lower() for med in user_medications] if user_medications else []
+                queried_drugs = [
+                    med for med in medications 
+                    if med.lower() not in user_med_names_lower
+                ]
+                
+                if user_medications and queried_drugs:
+                    for queried_drug in queried_drugs:
+                        print(f"[DEBUG] Searching web for {queried_drug} interactions with user's medications", file=sys.stderr)
+                        for user_med in user_medications:
+                            if user_med.lower() != queried_drug.lower():
+                                search_query = f"{queried_drug} {user_med} interaction safety"
+                                web_results = self.api_client.search_drug_websites(search_query)
+                                if web_results:
+                                    print(f"[DEBUG] Found web results for {queried_drug} + {user_med}", file=sys.stderr)
+                                    results["web_sources"].extend(web_results)
+                    if results["web_sources"]:
+                        results["metadata"]["sources_queried"].append("Web Search (Current Med Interactions)")
+                elif user_medications and len(medications) == 1:
+                    # Fallback: single medication from normalized list
                     queried_drug = medications[0]
                     print(f"[DEBUG] Searching web for {queried_drug} interactions with user's medications", file=sys.stderr)
                     for user_med in user_medications:

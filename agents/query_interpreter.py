@@ -64,10 +64,11 @@ class QueryInterpreter:
         what is explicitly stated or clearly implied.
         
         IMPORTANT: Set query_focus correctly:
-        - If user asks "Can I take [single drug]?" OR "Is [drug] safe for me?": set to "medication_safety"
+        - If user asks "Can I take [single drug]?" OR "Is [drug] safe for me?" OR "What [drug type] is safe?" OR "What would be a better [drug type]?": set to "medication_safety"
         - If user mentions a specific food/beverage (grapefruit, alcohol, etc): set to "food"
         - If user mentions a specific supplement: set to "supplement"
         - If user is asking about 2+ medications together: set to "drug_drug"
+        - If user is asking for alternative medications or safer options: set to "medication_safety"
         - Otherwise: set to "general"
         """
         
