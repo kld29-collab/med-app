@@ -124,8 +124,8 @@ def handle_query():
         user_context = data.get('user_context') or get_default_user_context()
         
         # ============ ATTEMPT 1: QUERY CACHE HIT ============
-        # If exact query was asked before, return cached explanation
-        cached_result = cache.get_cached_explanation(user_query)
+        # If exact query was asked before with same user context, return cached explanation
+        cached_result = cache.get_cached_explanation(user_query, user_context)
         if cached_result is not None:
             elapsed = time.time() - start_time
             print(f"[PERFORMANCE] Query cache hit - {elapsed:.3f}s (vs ~5-8s normally)")
@@ -209,7 +209,7 @@ def handle_query():
             "explanation": explanation,
             "formatted_explanation": formatted_explanation
         }
-        cache.cache_explanation(user_query, result)
+        cache.cache_explanation(user_query, result, user_context)
         
         elapsed = time.time() - start_time
         print(f"[PERFORMANCE] Full pipeline executed in {elapsed:.2f}s")

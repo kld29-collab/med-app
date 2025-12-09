@@ -63,9 +63,26 @@ class CacheManager:
                 self.persistent_cache_available = False
                 print(f"[CACHE] Persistent storage unavailable ({e}), using in-memory cache only")
     
-    def _hash_query(self, query: str) -> str:
-        """Create deterministic hash of query for cache key."""
-        return hashlib.md5(query.lower().strip().encode()).hexdigest()[:8]
+    def _hash_query(self, query: str, user_context: Dict = None) -> str:
+        """Create deterministic hash of query and user context for cache key."""
+        # Include relevant user context in the cache key to avoid serving stale data
+        context_key = ""
+        if user_context:
+            # Only include context fields that affect the explanation
+            context_parts = []
+            if user_context.get('age'):
+                context_parts.append(f"age:{user_context['age']}")
+            if user_context.get('sex'):
+                context_parts.append(f"sex:{user_context['sex']}")
+            if user_context.get('conditions'):
+                conditions = user_context.get('conditions', [])
+                if isinstance(conditions, list) and conditions:
+                    context_parts.append(f"cond:{','.join(sorted(conditions))}")
+            if context_parts:
+                context_key = "|" + "|".join(context_parts)
+        
+        combined = f"{query.lower().strip()}{context_key}"
+        return hashlib.md5(combined.encode()).hexdigest()[:8]
     
     def _hash_drugs(self, drug1: str, drug2: str) -> str:
         """Create deterministic hash of drug pair (order-independent)."""
@@ -74,14 +91,18 @@ class CacheManager:
     
     # ============ QUERY CACHE (Full Explanations) ============
     
-    def get_cached_explanation(self, query: str) -> Optional[Dict[str, Any]]:
+    def get_cached_explanation(self, query: str, user_context: Dict = None) -> Optional[Dict[str, Any]]:
         """
         Retrieve cached explanation for exact query match.
+        
+        Args:
+            query: The user's query string
+            user_context: User's health context (age, sex, conditions) to differentiate cache keys
         
         Returns:
             Cached explanation dict if valid, None otherwise
         """
-        cache_key = f"query:{self._hash_query(query)}"
+        cache_key = f"query:{self._hash_query(query, user_context)}"
         
         if cache_key in self.in_memory_cache:
             cached = self.in_memory_cache[cache_key]
@@ -96,9 +117,16 @@ class CacheManager:
         self.cache_stats['query_misses'] += 1
         return None
     
-    def cache_explanation(self, query: str, explanation: Dict[str, Any]) -> None:
-        """Cache full explanation response by query."""
-        cache_key = f"query:{self._hash_query(query)}"
+    def cache_explanation(self, query: str, explanation: Dict[str, Any], user_context: Dict = None) -> None:
+        """
+        Cache full explanation response by query and user context.
+        
+        Args:
+            query: The user's query string
+            explanation: The explanation to cache
+            user_context: User's health context (age, sex, conditions) to differentiate cache keys
+        """
+        cache_key = f"query:{self._hash_query(query, user_context)}"
         self.in_memory_cache[cache_key] = {
             'timestamp': time.time(),
             'data': explanation
