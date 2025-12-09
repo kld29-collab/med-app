@@ -202,6 +202,20 @@ class DrugAPIClient:
         
         interactions = []
         
+        # Common brand name to generic name mappings for fallback lookup
+        BRAND_TO_GENERIC = {
+            "advil": "ibuprofen",
+            "motrin": "ibuprofen",
+            "tylenol": "acetaminophen",
+            "paracetamol": "acetaminophen",
+            "aspirin": "acetylsalicylic acid",
+            "bayer": "acetylsalicylic acid",
+            "levora": "levonorgestrel",
+            "nexplanon": "etonogestrel",
+            "valtrex": "valacyclovir",
+            "zovirax": "acyclovir",
+        }
+        
         try:
             # Look up each drug in the database
             drug_ids = []
@@ -212,7 +226,18 @@ class DrugAPIClient:
                     drug_ids.append(drug["id"])
                     print(f"[DEBUG] Found DrugBank entry for {drug_name}: {drug['id']} (name in DB: {drug['name']})", file=sys.stderr)
                 else:
-                    print(f"[DEBUG] No DrugBank entry found for {drug_name} (tried exact and partial match)", file=sys.stderr)
+                    # Try generic name if brand name didn't work
+                    generic_name = BRAND_TO_GENERIC.get(drug_name.lower())
+                    if generic_name:
+                        print(f"[DEBUG] Trying generic name {generic_name} for brand name {drug_name}", file=sys.stderr)
+                        drug = self.drugbank_db.get_drug_by_name_fuzzy(generic_name)
+                        if drug:
+                            drug_ids.append(drug["id"])
+                            print(f"[DEBUG] Found DrugBank entry for {generic_name}: {drug['id']} (name in DB: {drug['name']})", file=sys.stderr)
+                        else:
+                            print(f"[DEBUG] No DrugBank entry found for {drug_name} or generic {generic_name}", file=sys.stderr)
+                    else:
+                        print(f"[DEBUG] No DrugBank entry found for {drug_name} (tried exact and partial match)", file=sys.stderr)
             
             if not drug_ids:
                 print(f"[WARNING] No drugs found in DrugBank database", file=sys.stderr)
