@@ -68,8 +68,8 @@ RULES:
 4. Severity: HIGH (bleeding, serious risk), MODERATE (interfere/reduce), MILD (may affect)
 5. Always recommend consulting a healthcare provider
 
-RESPOND WITH ONLY THIS JSON FORMAT:
-{"summary":"2-3 sentences","interactions":[{"items":["drug1","drug2"],"type":"drug-drug","explanation":"plain text","severity":"high/moderate/mild/unknown","recommendation":"action"}],"uncertainties":[],"disclaimer":"Medical disclaimer","recommendation":"Overall advice"}"""
+RESPOND WITH ONLY THIS JSON FORMAT (fill in actual content):
+{"summary":"2-3 sentences","interactions":[{"items":["drug1","drug2"],"type":"drug-drug","explanation":"plain text","severity":"high/moderate/mild/unknown","recommendation":"specific action"}],"uncertainties":[],"disclaimer":"Educational disclaimer text","recommendation":"Specific advice based on data"}"""
         
         # Build food interactions display with better formatting
         food_interactions_display = ""
@@ -110,6 +110,21 @@ Explain interactions based on this data."""
             )
             
             explanation = json.loads(response.choices[0].message.content)
+            
+            # Clean up placeholder text that might have been returned
+            recommendation = explanation.get("recommendation", "").strip()
+            placeholder_recommendations = ["Overall advice", "Consult healthcare provider", "Specific advice based on data"]
+            if not recommendation or recommendation in placeholder_recommendations or len(recommendation) < 10:
+                explanation["recommendation"] = "Consult your healthcare provider before making any medication changes."
+            
+            disclaimer = explanation.get("disclaimer", "").strip()
+            placeholder_disclaimers = ["Medical disclaimer", "Educational disclaimer text", "Educational disclaimer", "Disclaimer text"]
+            if not disclaimer or disclaimer in placeholder_disclaimers or len(disclaimer) < 15:
+                explanation["disclaimer"] = (
+                    "This information is for educational purposes only and does not constitute "
+                    "medical advice. Always consult with a qualified healthcare provider before "
+                    "making decisions about your medications."
+                )
             
             # Add metadata with source details for display
             sources_list = []
@@ -162,14 +177,6 @@ Explain interactions based on this data."""
                 "web": web_sources if web_sources else [],
                 "citations": citations if citations else []
             }
-            
-            # Ensure disclaimer is present
-            if "disclaimer" not in explanation or not explanation["disclaimer"]:
-                explanation["disclaimer"] = (
-                    "This information is for educational purposes only and does not constitute "
-                    "medical advice. Always consult with a qualified healthcare provider before "
-                    "making decisions about your medications."
-                )
             
             return explanation
             
